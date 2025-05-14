@@ -1,0 +1,13 @@
+[package]
+name = "MQ3K"
+version = "1.0.0"
+authors = ["MQ3K Team"]
+
+[addresses]
+mq3k = "0xdb3d67d9c869bbe0a02583bef1d243a2eae8d901534732e195e091dfac950e1c"
+aptos_framework = "0x1"
+aptos_std = "0x1"
+std = "0x1"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", subdir = "aptos-move/framework/aptos-framework", rev = "main" } 

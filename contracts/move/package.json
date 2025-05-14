@@ -1,0 +1,31 @@
+{
+    "name": "mq3k-aptos-contracts",
+    "version": "1.0.0",
+    "description": "Aptos smart contracts for the MQ3K escrow platform",
+    "main": "scripts/deploy.ts",
+    "scripts": {
+        "compile": "aptos move compile",
+        "test": "aptos move test",
+        "deploy:devnet": "ts-node scripts/deploy.ts",
+        "deploy:testnet": "APTOS_NODE_URL=https://fullnode.testnet.aptoslabs.com APTOS_FAUCET_URL=https://faucet.testnet.aptoslabs.com ts-node scripts/deploy.ts",
+        "deploy:mainnet": "APTOS_NODE_URL=https://fullnode.mainnet.aptoslabs.com ts-node scripts/deploy.ts"
+    },
+    "keywords": [
+        "blockchain",
+        "escrow",
+        "aptos",
+        "move",
+        "smart-contracts"
+    ],
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+        "aptos": "^1.10.0",
+        "dotenv": "^16.3.1"
+    },
+    "devDependencies": {
+        "@types/node": "^18.15.11",
+        "ts-node": "^10.9.1",
+        "typescript": "^5.0.4"
+    }
+}
