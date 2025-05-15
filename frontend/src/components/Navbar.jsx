@@ -37,19 +37,13 @@ function Navbar() {
                   Dashboard
                 </Link>
                 <Link
-                  to="/jobs"
+                  to="/marketplace"
                   className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
                 >
                   <BriefcaseIcon className="h-5 w-5 mr-1" />
-                  Jobs
-                </Link>
-                <Link
-                  to="/market"
-                  className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
-                >
-                  <ShoppingBagIcon className="h-5 w-5 mr-1" />
                   Marketplace
                 </Link>
+                
                 <Link
                   to="/milestones"
                   className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
