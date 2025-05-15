@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { userApi, aptosApi } from '../services/api';
 import { KeylessAccount } from '@aptos-labs/ts-sdk';
+import { supabase, supabaseAuth } from '../services/supabase';
 
 const AuthContext = createContext();
 
@@ -15,6 +16,20 @@ export const AuthProvider = ({ children }) => {
         const checkAuthStatus = async () => {
             const token = localStorage.getItem('token');
             const savedUser = localStorage.getItem('user');
+
+            // Check for Supabase session first
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+                if (supabaseUser) {
+                    setUser({
+                        ...supabaseUser,
+                        isSupabase: true
+                    });
+                    setLoading(false);
+                    return;
+                }
+            }
 
             // Try to get keyless account
             const savedKeylessAccount = getLocalKeylessAccount();
@@ -64,6 +79,54 @@ export const AuthProvider = ({ children }) => {
             return data.user;
         } catch (error) {
             setError(error.response?.data?.message || 'Login failed');
+            throw error;
+        }
+    };
+
+    const loginWithSupabase = async (email, password) => {
+        try {
+            setError(null);
+            const { data, error: supabaseError } = await supabaseAuth.signIn(email, password);
+
+            if (supabaseError) {
+                setError(supabaseError.message);
+                throw supabaseError;
+            }
+
+            setUser({
+                ...data.user,
+                isSupabase: true
+            });
+
+            return data.user;
+        } catch (error) {
+            setError(error.message || 'Supabase login failed');
+            throw error;
+        }
+    };
+
+    const registerWithSupabase = async ({ email, password, firstName, lastName }) => {
+        try {
+            setError(null);
+            const { data, error: supabaseError } = await supabaseAuth.signUp(email, password, {
+                first_name: firstName,
+                last_name: lastName,
+                full_name: `${firstName} ${lastName}`,
+            });
+
+            if (supabaseError) {
+                setError(supabaseError.message);
+                throw supabaseError;
+            }
+
+            setUser({
+                ...data.user,
+                isSupabase: true
+            });
+
+            return data.user;
+        } catch (error) {
+            setError(error.message || 'Supabase registration failed');
             throw error;
         }
     };
@@ -164,7 +227,12 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const logout = () => {
+    const logout = async () => {
+        // Sign out from Supabase if the user is authenticated with Supabase
+        if (user?.isSupabase) {
+            await supabaseAuth.signOut();
+        }
+
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('@aptos/keyless_account');
@@ -174,12 +242,29 @@ export const AuthProvider = ({ children }) => {
 
     const updateProfile = async (userData) => {
         try {
-            const { data } = await userApi.updateProfile(userData);
-            setUser(data);
-            localStorage.setItem('user', JSON.stringify(data));
-            return data;
+            if (user?.isSupabase) {
+                // Use Supabase to update profile
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .update(userData)
+                    .eq('id', user.id)
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                const updatedUser = { ...user, ...data };
+                setUser(updatedUser);
+                return updatedUser;
+            } else {
+                // Use traditional API
+                const { data } = await userApi.updateProfile(userData);
+                setUser(data);
+                localStorage.setItem('user', JSON.stringify(data));
+                return data;
+            }
         } catch (error) {
-            setError(error.response?.data?.message || 'Profile update failed');
+            setError(error.response?.data?.message || error.message || 'Profile update failed');
             throw error;
         }
     };
@@ -192,6 +277,8 @@ export const AuthProvider = ({ children }) => {
                 error,
                 keylessAccount,
                 login,
+                loginWithSupabase,
+                registerWithSupabase,
                 loginWithAptos,
                 loginWithGoogleAptos,
                 loginWithAppleAptos,

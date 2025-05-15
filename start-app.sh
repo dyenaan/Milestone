@@ -3,25 +3,14 @@
 # Set environment variables from config.env
 export $(grep -v '^#' config.env | xargs)
 
-# Start MongoDB if needed
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  echo "Checking MongoDB status on macOS..."
-  if ! pgrep -x mongod > /dev/null; then
-    echo "Starting MongoDB..."
-    mongod --dbpath ~/data/db &
-    sleep 5
-  else
-    echo "MongoDB is already running."
-  fi
-fi
-
 # Start backend
 echo "Starting backend server..."
 cd backend
 npm install
-npm run start:dev &
+npm run build
+PORT=5000 npm run dev &
 BACKEND_PID=$!
-echo "Backend started with PID: $BACKEND_PID"
+echo "Backend started with PID: $BACKEND_PID on port 5000"
 
 # Wait for backend to initialize
 sleep 5
@@ -30,7 +19,8 @@ sleep 5
 echo "Starting frontend server..."
 cd ../frontend
 npm install
-export REACT_APP_API_URL="http://localhost:3000"
+export REACT_APP_API_URL="http://localhost:5000/api"
+export DISABLE_ESLINT_PLUGIN=true
 npm start &
 FRONTEND_PID=$!
 echo "Frontend started with PID: $FRONTEND_PID"
@@ -56,5 +46,5 @@ trap cleanup SIGINT SIGTERM
 # Keep script running
 echo "Both servers are running. Press Ctrl+C to stop."
 echo "Frontend: http://localhost:3000"
-echo "Backend: http://localhost:3001"
+echo "Backend API: http://localhost:5000/api"
 wait 
