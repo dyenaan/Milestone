@@ -9,37 +9,55 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export const supabaseAuth = {
     // Sign up with email and password
     signUp: async (email, password, userData = {}) => {
-        return supabase.auth.signUp({
+        const response = await supabase.auth.signUp({
             email,
             password,
             options: {
                 data: userData
             }
         });
+        // Return the response with properly extracted data to prevent direct rendering of objects
+        return {
+            data: response.data,
+            error: response.error
+        };
     },
 
     // Sign in with email and password
     signIn: async (email, password) => {
-        return supabase.auth.signInWithPassword({
+        const response = await supabase.auth.signInWithPassword({
             email,
             password
         });
+        // Return the response with properly extracted data to prevent direct rendering of objects
+        return {
+            data: response.data,
+            error: response.error
+        };
     },
 
     // Sign out
     signOut: async () => {
-        return supabase.auth.signOut();
+        const response = await supabase.auth.signOut();
+        return {
+            data: response.data,
+            error: response.error
+        };
     },
 
     // Get current session
     getSession: async () => {
-        return supabase.auth.getSession();
+        const response = await supabase.auth.getSession();
+        return {
+            data: response.data,
+            error: response.error
+        };
     },
 
     // Get current user
     getUser: async () => {
-        const { data } = await supabase.auth.getUser();
-        return data?.user;
+        const response = await supabase.auth.getUser();
+        return response.data?.user || null;
     }
 };
 
@@ -78,16 +96,26 @@ export const supabaseJobs = {
             query = query.eq('category', filters.category);
         }
 
-        return query.order('created_at', { ascending: false });
+        const response = await query.order('created_at', { ascending: false });
+
+        return {
+            data: response.data || [],
+            error: response.error
+        };
     },
 
     // Get job by id
     getJobById: async (id) => {
-        return supabase
+        const response = await supabase
             .from('jobs')
             .select('*')
             .eq('id', id)
             .single();
+
+        return {
+            data: response.data || null,
+            error: response.error
+        };
     },
 
     // Create new job
@@ -117,9 +145,15 @@ export const supabaseJobs = {
 
         console.log('Creating job with creator:', processedData.creator_id);
 
-        return supabase
+        const response = await supabase
             .from('jobs')
-            .insert(processedData);
+            .insert(processedData)
+            .select();
+
+        return {
+            data: response.data?.[0] || null,
+            error: response.error
+        };
     },
 
     // Update job
@@ -161,9 +195,15 @@ export const supabaseMilestones = {
 
     // Create new milestone
     createMilestone: async (milestoneData) => {
-        return supabase
+        const response = await supabase
             .from('milestones')
-            .insert(milestoneData);
+            .insert(milestoneData)
+            .select();
+
+        return {
+            data: response.data?.[0] || null,
+            error: response.error
+        };
     },
 
     // Update milestone

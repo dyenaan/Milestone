@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import PropTypes from 'prop-types';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import Marketplace from './pages/Marketplace';
@@ -26,6 +27,27 @@ const ProtectedRoute = ({ children }) => {
   }
 
   return children;
+};
+
+// Add PropTypes validation
+ProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired
+};
+
+// Add PropTypes for AuthRoute
+const AuthRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  return isAuthenticated ? children : <Navigate to="/login" />;
+};
+
+// Add PropTypes validation
+AuthRoute.propTypes = {
+  children: PropTypes.node.isRequired
 };
 
 function AppRoutes() {

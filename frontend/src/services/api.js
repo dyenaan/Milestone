@@ -39,9 +39,50 @@ export const userApi = {
 
 // Aptos API calls
 export const aptosApi = {
-    loginWithAptos: (walletData) => api.post('/auth/aptos', walletData),
-    loginWithGoogle: (loginData) => api.post('/auth/aptos/google', loginData),
-    loginWithApple: (loginData) => api.post('/auth/aptos/apple', loginData),
+    loginWithAptos: async (walletData) => {
+        try {
+            const response = await api.post('/auth/aptos', walletData);
+            return {
+                data: response.data,
+                error: null
+            };
+        } catch (error) {
+            return {
+                data: null,
+                error: error.response?.data || { message: 'Aptos login failed' }
+            };
+        }
+    },
+
+    loginWithGoogle: async (loginData) => {
+        try {
+            const response = await api.post('/auth/aptos/google', loginData);
+            return {
+                data: response.data,
+                error: null
+            };
+        } catch (error) {
+            return {
+                data: null,
+                error: error.response?.data || { message: 'Google Aptos login failed' }
+            };
+        }
+    },
+
+    loginWithApple: async (loginData) => {
+        try {
+            const response = await api.post('/auth/aptos/apple', loginData);
+            return {
+                data: response.data,
+                error: null
+            };
+        } catch (error) {
+            return {
+                data: null,
+                error: error.response?.data || { message: 'Apple Aptos login failed' }
+            };
+        }
+    },
 };
 
 // Jobs API calls

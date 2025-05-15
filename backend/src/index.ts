@@ -6,6 +6,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import jobsRoutes from './routes/jobs';
 import milestonesRoutes from './routes/milestones';
+import walletRoutes from './routes/wallet';
 import { errorHandler } from './middleware/error';
 
 // Create Express server
@@ -30,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/milestones', milestonesRoutes);
+app.use('/api/wallet', walletRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

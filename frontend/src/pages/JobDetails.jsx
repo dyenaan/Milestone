@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { jobsApi } from '../services/api';
 import { supabaseJobs } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
-import {
-  CheckCircleIcon,
-  ClockIcon,
-  ExclamationCircleIcon,
-} from '@heroicons/react/24/outline';
 
 function JobDetails() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -168,19 +162,6 @@ function JobDetails() {
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircleIcon className="h-5 w-5 text-green-400" />;
-      case 'in-progress':
-        return <ClockIcon className="h-5 w-5 text-blue-400" />;
-      case 'pending':
-        return <ExclamationCircleIcon className="h-5 w-5 text-yellow-400" />;
-      default:
-        return null;
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -290,7 +271,9 @@ function JobDetails() {
 
             <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-gray-500">Description</dt>
-              <dd className="mt-1 text-sm text-gray-900 whitespace-pre-line">{job.description}</dd>
+              <dd className="mt-1 text-sm text-gray-600">
+                {job.description || "The job creator hasn&apos;t provided a detailed description for this job yet. If you&apos;re interested, please contact them for more details."}
+              </dd>
             </div>
           </dl>
         </div>
@@ -338,7 +321,7 @@ function JobDetails() {
                       value={proposal.coverLetter}
                       onChange={handleProposalChange}
                       className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                      placeholder="Explain why you're a good fit for this job..."
+                      placeholder="Explain why you&apos;re a good fit for this job..."
                     />
                   </div>
                 </div>

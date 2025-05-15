@@ -6,15 +6,13 @@ const Register = () => {
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
-        username: '',
         email: '',
         password: '',
-        confirmPassword: '',
-        role: 'client', // default role
+        confirmPassword: ''
     });
     const [error, setError] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const { register, registerWithSupabase } = useAuth();
+    const [loading, setLoading] = useState(false);
+    const { registerWithSupabase } = useAuth();
     const navigate = useNavigate();
 
     const handleChange = (e) => {
@@ -36,20 +34,17 @@ const Register = () => {
         if (!validateForm()) return;
 
         setError('');
-        setIsLoading(true);
+        setLoading(true);
 
         try {
-            // Remove confirmPassword from data sent to API
-            const { confirmPassword, ...registerData } = formData;
-
             // Use Supabase registration
-            await registerWithSupabase(registerData);
+            await registerWithSupabase(formData);
             navigate('/');
         } catch (err) {
             console.error('Registration error:', err);
             setError(err.message || 'Registration failed. Please try again.');
         } finally {
-            setIsLoading(false);
+            setLoading(false);
         }
     };
 
@@ -102,24 +97,6 @@ const Register = () => {
                                         className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
                                     />
                                 </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                                Username
-                            </label>
-                            <div className="mt-1">
-                                <input
-                                    id="username"
-                                    name="username"
-                                    type="text"
-                                    autoComplete="username"
-                                    required
-                                    value={formData.username}
-                                    onChange={handleChange}
-                                    className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                                />
                             </div>
                         </div>
 
@@ -178,31 +155,12 @@ const Register = () => {
                         </div>
 
                         <div>
-                            <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                                I am a
-                            </label>
-                            <div className="mt-1">
-                                <select
-                                    id="role"
-                                    name="role"
-                                    value={formData.role}
-                                    onChange={handleChange}
-                                    className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                                >
-                                    <option value="client">Client (I want to post jobs)</option>
-                                    <option value="freelancer">Freelancer (I want to work on jobs)</option>
-                                    <option value="reviewer">Reviewer (I want to review work)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div>
                             <button
                                 type="submit"
-                                disabled={isLoading}
+                                disabled={loading}
                                 className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-75"
                             >
-                                {isLoading ? 'Creating account...' : 'Create account'}
+                                {loading ? 'Creating account...' : 'Create account'}
                             </button>
                         </div>
                     </form>

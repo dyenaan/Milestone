@@ -5,6 +5,77 @@ const aptos = new Aptos(new AptosConfig({ network: Network.DEVNET }));
 
 /**
  * Utility to create synthetic Aptos accounts for development and testing
+ * These are not real accounts but can be used to simulate wallet interactions
+ * 
+ * @param {Object} options Configuration options
+ * @param {string} options.seed A seed to generate deterministic accounts (optional)
+ * @param {string} options.accountAddress The Aptos account address to use
+ * @returns {Object} The synthetic account with address and methods
+ */
+export const createSyntheticAccount = async (options = {}) => {
+    try {
+        // Use provided address or generate a random one
+        const accountAddress = options.accountAddress ||
+            '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+
+        // Create a basic account structure
+        const account = {
+            accountAddress,
+            isActive: true,
+            balance: {
+                apt: '0',
+                usd: '0'
+            },
+            resources: [],
+            modules: [],
+            transactions: []
+        };
+
+        // If we have a real address, try to fetch actual data
+        if (options.accountAddress) {
+            try {
+                // Try to get account resources (will fail for non-existent accounts)
+                const resources = await aptos.getAccountResources({
+                    accountAddress: options.accountAddress
+                });
+
+                if (Array.isArray(resources)) {
+                    account.resources = resources;
+                    // Extract coin balances if available
+                    const aptCoin = resources.find(r => r.type === '0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>');
+                    if (aptCoin && aptCoin.data && aptCoin.data.coin) {
+                        account.balance.apt = aptCoin.data.coin.value || '0';
+                    }
+                }
+            } catch (error) {
+                console.warn(`Could not fetch data for account ${options.accountAddress}`, error);
+            }
+        }
+
+        return account;
+    } catch (error) {
+        console.error('Error creating synthetic account:', error);
+        return {
+            accountAddress: '0x0',
+            isActive: false,
+            balance: { apt: '0', usd: '0' },
+            error: error.message
+        };
+    }
+};
+
+/**
+ * Check if an address is a valid Aptos address
+ * @param {string} address The Aptos address to validate
+ * @returns {boolean} Whether the address is valid
+ */
+export const isValidAptosAddress = (address) => {
+    if (!address || typeof address !== 'string') return false;
+    return /^0x[0-9a-fA-F]{1,64}$/.test(address);
+};
+
+/**
+ * Utility to create synthetic Aptos accounts for development and testing
  */
 export const SyntheticAccount = {
     /**

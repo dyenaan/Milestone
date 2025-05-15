@@ -18,43 +18,43 @@ const aptos = new Aptos(new AptosConfig({ network: Network.DEVNET }));
  */
 const storeEphemeralKeyPair = (ekp) => {
     localStorage.setItem("@aptos/ekp", encodeEphemeralKeyPair(ekp));
-  };
-  
-  /**
-   * Retrieve the ephemeral key pair from localStorage if it exists.
-   */
-  const getEphemeralKeyPair = () => {
+};
+
+/**
+ * Retrieve the ephemeral key pair from localStorage if it exists.
+ */
+const getEphemeralKeyPair = () => {
     try {
-      const encodedEkp = localStorage.getItem("@aptos/ekp");
-      return encodedEkp ? decodeEphemeralKeyPair(encodedEkp) : undefined;
+        const encodedEkp = localStorage.getItem("@aptos/ekp");
+        return encodedEkp ? decodeEphemeralKeyPair(encodedEkp) : undefined;
     } catch (error) {
-      console.warn("Failed to decode ephemeral key pair from localStorage", error);
-      return undefined;
+        console.warn("Failed to decode ephemeral key pair from localStorage", error);
+        return undefined;
     }
-  };
-  
-  /**
-   * Stringify the ephemeral key pairs to be stored in localStorage
-   */
-  const encodeEphemeralKeyPair = (ekp) =>
+};
+
+/**
+ * Stringify the ephemeral key pairs to be stored in localStorage
+ */
+const encodeEphemeralKeyPair = (ekp) =>
     JSON.stringify(ekp, (_, e) => {
-      if (typeof e === "bigint") return { __type: "bigint", value: e.toString() };
-      if (e instanceof Uint8Array) return { __type: "Uint8Array", value: Array.from(e) };
-      if (e instanceof EphemeralKeyPair)
-        return { __type: "EphemeralKeyPair", data: e.bcsToBytes() };
-      return e;
+        if (typeof e === "bigint") return { __type: "bigint", value: e.toString() };
+        if (e instanceof Uint8Array) return { __type: "Uint8Array", value: Array.from(e) };
+        if (e instanceof EphemeralKeyPair)
+            return { __type: "EphemeralKeyPair", data: e.bcsToBytes() };
+        return e;
     });
-  
-  /**
-   * Parse the ephemeral key pairs from a string
-   */
-  const decodeEphemeralKeyPair = (encodedEkp) =>
+
+/**
+ * Parse the ephemeral key pairs from a string
+ */
+const decodeEphemeralKeyPair = (encodedEkp) =>
     JSON.parse(encodedEkp, (_, e) => {
-      if (e && e.__type === "bigint") return BigInt(e.value);
-      if (e && e.__type === "Uint8Array") return new Uint8Array(e.value);
-      if (e && e.__type === "EphemeralKeyPair")
-        return EphemeralKeyPair.fromBytes(e.data);
-      return e;
+        if (e && e.__type === "bigint") return BigInt(e.value);
+        if (e && e.__type === "Uint8Array") return new Uint8Array(e.value);
+        if (e && e.__type === "EphemeralKeyPair")
+            return EphemeralKeyPair.fromBytes(e.data);
+        return e;
     });
 
 // Parse JWT from URL
@@ -69,7 +69,7 @@ const AptosLogin = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [isSuccess, setIsSuccess] = useState(false);
-    const { loginWithGoogleAptos, storeKeylessAccount } = useAuth();
+    const { storeKeylessAccount } = useAuth();
     const navigate = useNavigate();
 
     // Check for callback on mount (handle redirect from OIDC provider)
@@ -113,6 +113,10 @@ const AptosLogin = () => {
                             ephemeralKeyPair,
                         });
 
+                        if (!keylessAccount) {
+                            throw new Error('Failed to derive keyless account: null result received');
+                        }
+
                         console.log('Keyless account derived successfully:', keylessAccount.accountAddress);
 
                         // Store the keyless account
@@ -146,6 +150,10 @@ const AptosLogin = () => {
         try {
             // Generate ephemeral key pair
             const ephemeralKeyPair = EphemeralKeyPair.generate();
+            if (!ephemeralKeyPair) {
+                throw new Error('Failed to generate ephemeral key pair');
+            }
+
             console.log('Generated new ephemeral key pair with nonce:', ephemeralKeyPair.nonce);
 
             // Store it for later use

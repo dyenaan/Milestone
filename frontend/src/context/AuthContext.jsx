@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import PropTypes from 'prop-types';
 import { userApi, aptosApi } from '../services/api';
 import { KeylessAccount } from '@aptos-labs/ts-sdk';
 import { supabase, supabaseAuth } from '../services/supabase';
@@ -11,6 +12,27 @@ export const AuthProvider = ({ children }) => {
     const [error, setError] = useState(null);
     const [keylessAccount, setKeylessAccount] = useState(null);
 
+    // Define getLocalKeylessAccount outside of the useEffect
+    const getLocalKeylessAccount = () => {
+        try {
+            const encodedAccount = localStorage.getItem('@aptos/keyless_account');
+            return encodedAccount ? decodeKeylessAccount(encodedAccount) : null;
+        } catch (error) {
+            console.warn('Failed to decode keyless account from localStorage', error);
+            return null;
+        }
+    };
+
+    const decodeKeylessAccount = (encodedAccount) => {
+        return JSON.parse(encodedAccount, (_, e) => {
+            if (e && e.__type === "bigint") return window.BigInt(e.value);
+            if (e && e.__type === "Uint8Array") return new Uint8Array(e.value);
+            if (e && e.__type === "KeylessAccount")
+                return KeylessAccount.fromBytes(new Uint8Array(e.data));
+            return e;
+        });
+    };
+
     useEffect(() => {
         // Check if user is already logged in
         const checkAuthStatus = async () => {
@@ -18,17 +40,45 @@ export const AuthProvider = ({ children }) => {
             const savedUser = localStorage.getItem('user');
 
             // Check for Supabase session first
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                const { data: { user: supabaseUser } } = await supabase.auth.getUser();
-                if (supabaseUser) {
-                    setUser({
-                        ...supabaseUser,
-                        isSupabase: true
-                    });
+            try {
+                const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+                if (sessionError) {
+                    console.error('Error getting session:', sessionError);
                     setLoading(false);
                     return;
                 }
+
+                const session = sessionData?.session;
+
+                if (session) {
+                    const { data: userData, error: userError } = await supabase.auth.getUser();
+
+                    if (userError) {
+                        console.error('Error getting user data:', userError);
+                        setLoading(false);
+                        return;
+                    }
+
+                    const supabaseUser = userData?.user;
+
+                    if (supabaseUser) {
+                        // Extract only the properties we need to avoid rendering objects directly
+                        const safeUser = {
+                            id: supabaseUser.id,
+                            email: supabaseUser.email,
+                            user_metadata: supabaseUser.user_metadata,
+                            created_at: supabaseUser.created_at,
+                            isSupabase: true
+                        };
+
+                        setUser(safeUser);
+                        setLoading(false);
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error('Error checking Supabase session:', err);
             }
 
             // Try to get keyless account
@@ -93,12 +143,24 @@ export const AuthProvider = ({ children }) => {
                 throw supabaseError;
             }
 
-            setUser({
-                ...data.user,
-                isSupabase: true
-            });
+            // Make sure we're getting the user object correctly
+            const user = data?.user || data?.session?.user;
 
-            return data.user;
+            if (!user) {
+                throw new Error('Failed to retrieve user data from Supabase auth response');
+            }
+
+            // Extract only the properties we need to avoid rendering objects directly
+            const safeUser = {
+                id: user.id,
+                email: user.email,
+                user_metadata: user.user_metadata,
+                created_at: user.created_at,
+                isSupabase: true
+            };
+
+            setUser(safeUser);
+            return safeUser;
         } catch (error) {
             setError(error.message || 'Supabase login failed');
             throw error;
@@ -119,12 +181,24 @@ export const AuthProvider = ({ children }) => {
                 throw supabaseError;
             }
 
-            setUser({
-                ...data.user,
-                isSupabase: true
-            });
+            // Make sure we're getting the user object correctly
+            const user = data?.user || data?.session?.user;
 
-            return data.user;
+            if (!user) {
+                throw new Error('Failed to retrieve user data from Supabase auth response');
+            }
+
+            // Extract only the properties we need to avoid rendering objects directly
+            const safeUser = {
+                id: user.id,
+                email: user.email,
+                user_metadata: user.user_metadata,
+                created_at: user.created_at,
+                isSupabase: true
+            };
+
+            setUser(safeUser);
+            return safeUser;
         } catch (error) {
             setError(error.message || 'Supabase registration failed');
             throw error;
@@ -134,7 +208,13 @@ export const AuthProvider = ({ children }) => {
     const loginWithAptos = async (walletData) => {
         try {
             setError(null);
-            const { data } = await aptosApi.loginWithAptos(walletData);
+            const response = await aptosApi.loginWithAptos(walletData);
+            const data = response.data;
+
+            if (!data || !data.user) {
+                throw new Error('Invalid response from Aptos login');
+            }
+
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
             setUser(data.user);
@@ -148,7 +228,13 @@ export const AuthProvider = ({ children }) => {
     const loginWithGoogleAptos = async (loginData) => {
         try {
             setError(null);
-            const { data } = await aptosApi.loginWithGoogle(loginData);
+            const response = await aptosApi.loginWithGoogle(loginData);
+            const data = response.data;
+
+            if (!data || !data.user) {
+                throw new Error('Invalid response from Google Aptos login');
+            }
+
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
             setUser(data.user);
@@ -162,7 +248,13 @@ export const AuthProvider = ({ children }) => {
     const loginWithAppleAptos = async (loginData) => {
         try {
             setError(null);
-            const { data } = await aptosApi.loginWithApple(loginData);
+            const response = await aptosApi.loginWithApple(loginData);
+            const data = response.data;
+
+            if (!data || !data.user) {
+                throw new Error('Invalid response from Apple Aptos login');
+            }
+
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(data.user));
             setUser(data.user);
@@ -189,26 +281,6 @@ export const AuthProvider = ({ children }) => {
                 return { __type: "Uint8Array", value: Array.from(e) };
             if (e instanceof KeylessAccount)
                 return { __type: "KeylessAccount", data: Array.from(account.bcsToBytes()) };
-            return e;
-        });
-    };
-
-    const getLocalKeylessAccount = () => {
-        try {
-            const encodedAccount = localStorage.getItem('@aptos/keyless_account');
-            return encodedAccount ? decodeKeylessAccount(encodedAccount) : null;
-        } catch (error) {
-            console.warn('Failed to decode keyless account from localStorage', error);
-            return null;
-        }
-    };
-
-    const decodeKeylessAccount = (encodedAccount) => {
-        return JSON.parse(encodedAccount, (_, e) => {
-            if (e && e.__type === "bigint") return window.BigInt(e.value);
-            if (e && e.__type === "Uint8Array") return new Uint8Array(e.value);
-            if (e && e.__type === "KeylessAccount")
-                return KeylessAccount.fromBytes(new Uint8Array(e.data));
             return e;
         });
     };
@@ -293,6 +365,11 @@ export const AuthProvider = ({ children }) => {
             {children}
         </AuthContext.Provider>
     );
+};
+
+// Add PropTypes validation
+AuthProvider.propTypes = {
+    children: PropTypes.node.isRequired
 };
 
 export const useAuth = () => useContext(AuthContext);

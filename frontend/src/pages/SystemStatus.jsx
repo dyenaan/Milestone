@@ -19,7 +19,7 @@ const SystemStatus = () => {
                     </div>
                     <div className="ml-3">
                         <p className="text-sm text-yellow-700">
-                            <strong>Important:</strong> If you're seeing database relationship errors, ensure you've created the necessary Supabase tables as specified in the SUPABASE-README.md file.
+                            <strong>Important:</strong> If you&apos;re seeing database relationship errors, ensure you&apos;ve created the necessary Supabase tables as specified in the SUPABASE-README.md file.
                         </p>
                     </div>
                 </div>
@@ -56,6 +56,12 @@ const SystemStatus = () => {
                         </ul>
                     </div>
                 </div>
+            </div>
+
+            <div className="alert alert-warning">
+                <p className="text-sm text-amber-800">
+                    The system is operational but we&apos;re experiencing some delays in transaction processing. We&apos;re working to resolve this issue. Thank you for your patience.
+                </p>
             </div>
         </div>
     );

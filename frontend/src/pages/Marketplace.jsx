@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { jobsApi } from '../services/api';
 import { supabaseJobs } from '../services/supabase';
-import { useAuth } from '../context/AuthContext';
 
 const Marketplace = () => {
     const [jobs, setJobs] = useState([]);
@@ -14,7 +13,6 @@ const Marketplace = () => {
         maxBudget: '',
         status: 'open'
     });
-    const { user } = useAuth();
 
     useEffect(() => {
         fetchJobs();

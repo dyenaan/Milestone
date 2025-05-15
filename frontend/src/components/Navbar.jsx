@@ -1,6 +1,6 @@
 import React, { Fragment } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { HomeIcon, BriefcaseIcon, ClipboardDocumentListIcon, PlusCircleIcon, UserCircleIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { HomeIcon, BriefcaseIcon, ClipboardDocumentListIcon, PlusCircleIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import { Menu, Transition } from '@headlessui/react';
 import { useAuth } from '../context/AuthContext';
 

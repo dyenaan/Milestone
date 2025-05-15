@@ -29,7 +29,7 @@ export const checkBackendHealth = async () => {
 export const checkSupabaseHealth = async () => {
     try {
         // Ping the Supabase health check endpoint
-        const { data, error } = await supabase.from('health_check').select('*').limit(1);
+        const { error } = await supabase.from('health_check').select('*').limit(1);
 
         if (error) {
             throw new Error(error.message);
@@ -67,4 +67,17 @@ export const runAllHealthChecks = async () => {
         supabase: supabaseHealth,
         allHealthy: backendHealth.success && supabaseHealth.success
     };
+};
+
+export const checkApiStatus = async () => {
+    try {
+        const response = await fetch('/api/health');
+        if (!response.ok) {
+            throw new Error('API health check failed');
+        }
+        return { status: 'ok', message: 'API is healthy' };
+    } catch (error) {
+        console.error('API health check failed:', error);
+        return { status: 'error', message: 'API connection issue' };
+    }
 }; 

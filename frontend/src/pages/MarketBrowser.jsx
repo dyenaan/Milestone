@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 
 const MarketBrowser = () => {
     const [goods, setGoods] = useState([]);
@@ -202,7 +201,7 @@ const MarketBrowser = () => {
                                 <div className="mt-4">
                                     <button
                                         className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                                        onClick={() => {/* TODO: Implement buy/view details */}}
+                                        onClick={() => {/* TODO: Implement buy/view details */ }}
                                     >
                                         View Details
                                     </button>
