@@ -1,6 +1,6 @@
 import React, { Fragment } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { HomeIcon, BriefcaseIcon, ClipboardDocumentListIcon, PlusCircleIcon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { HomeIcon, BriefcaseIcon, ClipboardDocumentListIcon, PlusCircleIcon, UserCircleIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
 import { Menu, Transition } from '@headlessui/react';
 import { useAuth } from '../context/AuthContext';
 
@@ -42,6 +42,13 @@ function Navbar() {
                 >
                   <BriefcaseIcon className="h-5 w-5 mr-1" />
                   Jobs
+                </Link>
+                <Link
+                  to="/market"
+                  className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"
+                >
+                  <ShoppingBagIcon className="h-5 w-5 mr-1" />
+                  Marketplace
                 </Link>
                 <Link
                   to="/milestones"

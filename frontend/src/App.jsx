@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import JobBrowser from './pages/JobBrowser';
+import MarketBrowser from './pages/MarketBrowser';
 import MilestoneTracker from './pages/MilestoneTracker';
 import CreateJob from './pages/CreateJob';
 import JobDetails from './pages/JobDetails';
@@ -43,6 +44,11 @@ function AppRoutes() {
           <Route path="/jobs" element={
             <ProtectedRoute>
               <JobBrowser />
+            </ProtectedRoute>
+          } />
+          <Route path="/market" element={
+            <ProtectedRoute>
+              <MarketBrowser />
             </ProtectedRoute>
           } />
           <Route path="/milestones" element={
