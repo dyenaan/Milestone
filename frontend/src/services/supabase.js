@@ -47,17 +47,154 @@ export const supabaseAuth = {
 
     // Get current session
     getSession: async () => {
-        const response = await supabase.auth.getSession();
-        return {
-            data: response.data,
-            error: response.error
-        };
+        try {
+            const response = await supabase.auth.getSession();
+            return {
+                data: response.data,
+                error: response.error
+            };
+        } catch (err) {
+            console.error('Error getting session:', err);
+            return {
+                data: null,
+                error: {
+                    message: 'Unable to connect to authentication service. Please check your internet connection and try again.'
+                }
+            };
+        }
     },
 
     // Get current user
     getUser: async () => {
-        const response = await supabase.auth.getUser();
-        return response.data?.user || null;
+        try {
+            const response = await supabase.auth.getUser();
+            return response.data?.user || null;
+        } catch (err) {
+            console.error('Error getting user data:', err);
+            return null;
+        }
+    }
+};
+
+// Helper functions for job applications
+export const supabaseApplications = {
+    // Get applications by user ID
+    getApplicationsByUserId: async (userId) => {
+        if (!userId) {
+            console.warn('No user ID provided for application lookup');
+            return { data: [], error: null };
+        }
+
+        // Format check - if UUID convert to both formats for query
+        let userIdFormats = [userId];
+
+        // If it's a UUID, add the wallet-like format
+        if (typeof userId === 'string' &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+            userIdFormats.push('0x' + userId.replace(/-/g, ''));
+        }
+
+        // If it's already a wallet-like format (starting with 0x), we're good
+        console.log('Searching for applications with user ID formats:', userIdFormats);
+
+        // Use OR filter to check all possible formats
+        const response = await supabase
+            .from('job_applications')
+            .select('*, jobs(*)')
+            .in('applicant_id', userIdFormats)
+            .order('created_at', { ascending: false });
+
+        return {
+            data: response.data || [],
+            error: response.error
+        };
+    },
+
+    // Get applications by job ID
+    getApplicationsByJobId: async (jobId) => {
+        const response = await supabase
+            .from('job_applications')
+            .select('*, profiles(*)')
+            .eq('job_id', jobId)
+            .order('created_at', { ascending: false });
+
+        return {
+            data: response.data || [],
+            error: response.error
+        };
+    },
+
+    // Create new application
+    createApplication: async (applicationData) => {
+        try {
+            // Ensure application data has the required fields
+            if (!applicationData.job_id) {
+                console.warn('No job_id provided for application');
+                return {
+                    error: {
+                        message: 'Job ID is required'
+                    }
+                };
+            }
+
+            if (!applicationData.applicant_id) {
+                console.warn('No applicant_id provided for application');
+                return {
+                    error: {
+                        message: 'Applicant ID is required'
+                    }
+                };
+            }
+
+            console.log('Creating application with data:', applicationData);
+
+            // Remove any existing ID to let Supabase generate one
+            const cleanData = { ...applicationData };
+            delete cleanData.id;
+
+            const response = await supabase
+                .from('job_applications')
+                .insert(cleanData)
+                .select();
+
+            if (response.error) {
+                console.error('Supabase application creation error:', response.error);
+                return {
+                    data: null,
+                    error: response.error
+                };
+            }
+
+            return {
+                data: response.data?.[0] || null,
+                error: response.error
+            };
+        } catch (err) {
+            console.error('Unexpected error during application creation:', err);
+            return {
+                data: null,
+                error: {
+                    message: 'Unexpected error during application creation',
+                    details: err.message
+                }
+            };
+        }
+    },
+
+    // Update application
+    updateApplication: async (id, updates) => {
+        return supabase
+            .from('job_applications')
+            .update(updates)
+            .eq('id', id);
+    },
+
+    // Delete application
+    deleteApplication: async (id) => {
+        return supabase
+            .from('job_applications')
+            .delete()
+            .eq('id', id);
     }
 };
 
@@ -96,6 +233,10 @@ export const supabaseJobs = {
             query = query.eq('category', filters.category);
         }
 
+        if (filters.creator_id) {
+            query = query.eq('creator_id', filters.creator_id);
+        }
+
         const response = await query.order('created_at', { ascending: false });
 
         return {
@@ -120,40 +261,34 @@ export const supabaseJobs = {
 
     // Create new job
     createJob: async (jobData) => {
-        // Prepare data for submission
-        let processedData = { ...jobData };
+        try {
+            // Prepare data for submission
+            let processedData = { ...jobData };
 
-        // Validate creator_id - can be wallet address or UUID
-        if (!processedData.creator_id ||
-            typeof processedData.creator_id !== 'string' ||
-            processedData.creator_id.includes('{') ||
-            processedData.creator_id.includes('[')) {
+            // Log the incoming job data
+            console.log('Job creation raw data:', processedData);
 
-            console.warn('Invalid creator_id format detected:', processedData.creator_id);
+            // Remove any existing ID to let Supabase generate one
+            delete processedData.id;
 
-            // Use a default wallet-like address as fallback
-            processedData.creator_id = '0x123456789abcdef123456789abcdef123456789abcdef';
+            // Attempt to insert the job into Supabase
+            const { data, error } = await supabase
+                .from('jobs')
+                .insert(processedData)
+                .select();
+
+            // Handle any errors from Supabase
+            if (error) {
+                console.error('Supabase error details:', error);
+                throw error;
+            }
+
+            // Return the created job (single object, not array)
+            return data?.[0] || null;
+        } catch (err) {
+            console.error('Unexpected error during job creation:', err);
+            throw err;
         }
-
-        // If the ID looks like a UUID but we're expecting a wallet address now
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(processedData.creator_id)) {
-            console.log('Converting UUID to wallet-like format for consistency');
-            // Convert UUID to wallet-like format (for display consistency)
-            // This preserves the ID value while making it look like a wallet address
-            processedData.creator_id = '0x' + processedData.creator_id.replace(/-/g, '');
-        }
-
-        console.log('Creating job with creator:', processedData.creator_id);
-
-        const response = await supabase
-            .from('jobs')
-            .insert(processedData)
-            .select();
-
-        return {
-            data: response.data?.[0] || null,
-            error: response.error
-        };
     },
 
     // Update job
@@ -195,15 +330,31 @@ export const supabaseMilestones = {
 
     // Create new milestone
     createMilestone: async (milestoneData) => {
-        const response = await supabase
-            .from('milestones')
-            .insert(milestoneData)
-            .select();
+        try {
+            // Ensure the job_id is valid and properly formatted
+            if (!milestoneData.job_id) {
+                console.warn('No job_id provided for milestone');
+                throw new Error('Job ID is required for milestone creation');
+            }
 
-        return {
-            data: response.data?.[0] || null,
-            error: response.error
-        };
+            // Remove any existing ID to let Supabase generate one
+            const cleanData = { ...milestoneData };
+            delete cleanData.id;
+
+            const { error } = await supabase
+                .from('milestones')
+                .insert(cleanData);
+
+            if (error) {
+                console.error('Supabase milestone creation error:', error);
+                throw error;
+            }
+
+            return true;
+        } catch (err) {
+            console.error('Unexpected error during milestone creation:', err);
+            throw err;
+        }
     },
 
     // Update milestone

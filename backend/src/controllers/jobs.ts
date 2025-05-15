@@ -110,42 +110,11 @@ export const createJob = async (req: Request, res: Response) => {
             });
         }
 
-        // Get creator ID from user object or request body
-        // Now handling wallet addresses as primary identifier
-        let creatorId = user?.accountAddress || user?.id || req.body.creator_id;
-
-        if (!creatorId) {
-            return res.status(400).json({
-                message: 'Creator ID or wallet address is required'
+        // Ensure user is authenticated
+        if (!user?.id) {
+            return res.status(401).json({
+                message: 'Authentication required to create a job'
             });
-        }
-
-        // Validate that creatorId is a string, not an object
-        if (typeof creatorId !== 'string') {
-            // If creator_id is an object, try to extract the ID or address
-            if (typeof creatorId === 'object' && creatorId !== null) {
-                if (creatorId.accountAddress) {
-                    // Extract wallet address if available
-                    creatorId = creatorId.accountAddress;
-                } else if (creatorId.id) {
-                    // Fallback to id property
-                    creatorId = creatorId.id;
-                } else if (creatorId.data) {
-                    // Use a default wallet-like format if we have a complex object
-                    console.warn('Received complex creator_id object:', creatorId);
-                    creatorId = '0x123456789abcdef123456789abcdef123456789abcdef';
-                }
-            } else {
-                return res.status(400).json({
-                    message: 'Invalid creator_id format'
-                });
-            }
-        }
-
-        // For old UUID format, convert to wallet-like format for consistency
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(creatorId)) {
-            // Convert UUID to wallet-like format
-            creatorId = '0x' + creatorId.replace(/-/g, '');
         }
 
         const jobData = {
@@ -154,11 +123,11 @@ export const createJob = async (req: Request, res: Response) => {
             budget: parseFloat(budget.toString()),
             category,
             deadline,
-            creator_id: creatorId,
+            creator_id: user.id, // Use the authenticated user's ID
             status: 'open'
         };
 
-        console.log('Creating job with creator:', creatorId);
+        console.log('Creating job with data:', jobData);
 
         const { data, error } = await supabase
             .from('jobs')
@@ -167,8 +136,16 @@ export const createJob = async (req: Request, res: Response) => {
 
         if (error) {
             console.error('Supabase error in createJob:', error);
+            let errorMessage = error.message;
+
+            if (error.message.includes('row-level security policy')) {
+                errorMessage = 'Permission denied. Ensure RLS policies allow job creation for authenticated users.';
+            }
+
             return res.status(400).json({
-                message: error.message
+                message: errorMessage,
+                details: error.details,
+                hint: 'Check Supabase RLS policies for the jobs table.'
             });
         }
 

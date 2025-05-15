@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import Navbar from './components/Navbar';
@@ -13,16 +13,60 @@ import Profile from './pages/Profile';
 import SystemStatus from './pages/SystemStatus';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AptosLogin from './components/AptosLogin';
+import NetworkErrorHandler from './components/NetworkErrorHandler';
 
 // Protected route component
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
+  const [redirecting, setRedirecting] = useState(false);
+
+  // Add more thorough authentication check
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      if (!loading && !isAuthenticated) {
+        console.log('Protected route - Not authenticated, will redirect to login');
+        setRedirecting(true);
+
+        // Double-check localStorage before redirecting
+        const token = localStorage.getItem('token');
+        const savedUser = localStorage.getItem('user');
+        if (token || savedUser) {
+          console.warn('Found token/user in localStorage but context says not authenticated!',
+            { hasToken: !!token, hasUser: !!savedUser });
+          // Wait a moment to see if context updates (sometimes there's a race condition)
+          await new Promise(r => setTimeout(r, 500));
+        }
+      } else if (user) {
+        // Log user information when authenticated
+        console.log('Protected route - User authenticated:', user.id);
+        console.log('User auth source:', user.authSource || 'not specified');
+      }
+    };
+
+    checkAuthStatus();
+  }, [loading, isAuthenticated, user]);
 
   if (loading) {
-    return <div className="flex justify-center items-center h-screen">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-pulse text-center">
+          <p className="text-gray-600">Loading authentication state...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!isAuthenticated) {
+    if (redirecting) {
+      return (
+        <div className="flex justify-center items-center h-screen">
+          <div className="text-center">
+            <p className="text-red-600 mb-2">Not authenticated</p>
+            <p className="text-gray-600 text-sm">Redirecting to login...</p>
+          </div>
+        </div>
+      );
+    }
     return <Navigate to="/login" />;
   }
 
@@ -96,6 +140,7 @@ function AppRoutes() {
           <Route path="/login/google/callback" element={<AptosLogin />} />
         </Routes>
       </main>
+      <NetworkErrorHandler />
     </div>
   );
 }

@@ -50,7 +50,7 @@ const encodeEphemeralKeyPair = (ekp) =>
  */
 const decodeEphemeralKeyPair = (encodedEkp) =>
     JSON.parse(encodedEkp, (_, e) => {
-        if (e && e.__type === "bigint") return BigInt(e.value);
+        if (e && e.__type === "bigint") return window.BigInt(e.value);
         if (e && e.__type === "Uint8Array") return new Uint8Array(e.value);
         if (e && e.__type === "EphemeralKeyPair")
             return EphemeralKeyPair.fromBytes(e.data);
@@ -121,6 +121,25 @@ const AptosLogin = () => {
 
                         // Store the keyless account
                         storeKeylessAccount(keylessAccount);
+
+                        // Create a user object that includes Aptos wallet info
+                        const aptosUser = {
+                            id: keylessAccount.accountAddress, // Use address as ID
+                            accountAddress: keylessAccount.accountAddress,
+                            isKeyless: true,
+                            // Extract user info from JWT if available
+                            name: payload.name || 'Aptos User',
+                            email: payload.email || '',
+                            picture: payload.picture || '',
+                            // Add authentication source flags
+                            isAptos: true,
+                            authMethod: 'google_aptos'
+                        };
+
+                        // Store in localStorage for persistence and detection
+                        localStorage.setItem('user', JSON.stringify(aptosUser));
+                        // Also set a token flag to help with auth detection
+                        localStorage.setItem('token', 'aptos-authenticated');
 
                         // Success!
                         setIsSuccess(true);

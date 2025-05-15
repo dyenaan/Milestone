@@ -1,15 +1,39 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AptosLogin from '../components/AptosLogin';
+import AuthStatus from '../components/AuthStatus';
 
 const Login = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { loginWithSupabase } = useAuth();
+    const [showDebug, setShowDebug] = useState(false);
+    const [loginSuccess, setLoginSuccess] = useState(false);
+    const { loginWithSupabase, isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    // Check if we need to redirect after successful authentication
+    useEffect(() => {
+        if (isAuthenticated && user) {
+            console.log('User is already authenticated:', user);
+            const returnUrl = location.state?.returnUrl || '/';
+
+            // If the user just logged in successfully, show a brief success message
+            if (loginSuccess) {
+                setTimeout(() => {
+                    console.log('Redirecting to', returnUrl);
+                    navigate(returnUrl);
+                }, 1000);
+            } else {
+                // If they're already logged in, redirect immediately
+                console.log('Already logged in, redirecting to', returnUrl);
+                navigate(returnUrl);
+            }
+        }
+    }, [isAuthenticated, user, navigate, location, loginSuccess]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -17,14 +41,43 @@ const Login = () => {
         setIsLoading(true);
 
         try {
-            await loginWithSupabase(email, password);
-            navigate('/');
+            const loginResult = await loginWithSupabase(email, password);
+            console.log('Login successful:', loginResult);
+            setLoginSuccess(true);
+
+            // Don't navigate here - let the useEffect handle it for reliability
         } catch (err) {
+            console.error('Login error:', err);
             setError(err.message || 'Login failed. Please check your credentials.');
-        } finally {
             setIsLoading(false);
         }
     };
+
+    if (loginSuccess) {
+        return (
+            <div className="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
+                <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+                    <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+                        <div className="rounded-md bg-green-50 p-4">
+                            <div className="flex">
+                                <div className="flex-shrink-0">
+                                    <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                    </svg>
+                                </div>
+                                <div className="ml-3">
+                                    <p className="text-sm font-medium text-green-800">
+                                        Login successful! Redirecting...
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        {showDebug && <AuthStatus />}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -107,6 +160,19 @@ const Login = () => {
                             <AptosLogin />
                         </div>
                     </div>
+
+                    {/* Debug toggle button */}
+                    <div className="mt-6 text-center">
+                        <button
+                            onClick={() => setShowDebug(!showDebug)}
+                            className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                            {showDebug ? 'Hide Debug Info' : 'Show Debug Info'}
+                        </button>
+                    </div>
+
+                    {/* Debug authentication status */}
+                    {showDebug && <AuthStatus />}
                 </div>
             </div>
         </div>

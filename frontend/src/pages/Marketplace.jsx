@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { jobsApi } from '../services/api';
 import { supabaseJobs } from '../services/supabase';
 
 const Marketplace = () => {
@@ -23,24 +22,12 @@ const Marketplace = () => {
         setError(null);
 
         try {
-            let jobData = [];
+            // Try to get jobs directly from Supabase
+            const { data, error } = await supabaseJobs.getJobs(filter);
+            if (error) throw error;
 
-            // Try to get jobs from API first
-            try {
-                const response = await jobsApi.getJobs(filter);
-                jobData = response.data || [];
-                console.log('Jobs from API:', jobData);
-            } catch (apiError) {
-                console.warn('API fetch failed, trying Supabase directly', apiError);
-
-                // If API fails, try Supabase as fallback
-                const { data, error } = await supabaseJobs.getJobs(filter);
-                if (error) throw error;
-                jobData = data || [];
-                console.log('Jobs from Supabase:', jobData);
-            }
-
-            setJobs(jobData);
+            setJobs(data || []);
+            console.log('Jobs from Supabase:', data);
         } catch (err) {
             console.error('Error fetching jobs:', err);
             setError('Failed to load jobs. Please try again later.');

@@ -11,6 +11,8 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [keylessAccount, setKeylessAccount] = useState(null);
+    const [isAptosAuthenticated, setIsAptosAuthenticated] = useState(false);
+    const [authSource, setAuthSource] = useState(null); // Track auth source for debugging
 
     // Define getLocalKeylessAccount outside of the useEffect
     const getLocalKeylessAccount = () => {
@@ -38,41 +40,43 @@ export const AuthProvider = ({ children }) => {
         const checkAuthStatus = async () => {
             const token = localStorage.getItem('token');
             const savedUser = localStorage.getItem('user');
+            const aptosAccount = localStorage.getItem('@aptos/keyless_account');
+
+            console.log('Checking auth status...');
+            console.log('Saved token:', token ? 'exists' : 'none');
+            console.log('Saved user:', savedUser);
+            console.log('Aptos account:', aptosAccount ? 'exists' : 'none');
 
             // Check for Supabase session first
             try {
                 const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+                console.log('Supabase session check:', sessionData?.session ? 'active' : 'none');
 
                 if (sessionError) {
                     console.error('Error getting session:', sessionError);
-                    setLoading(false);
-                    return;
-                }
-
-                const session = sessionData?.session;
-
-                if (session) {
+                } else if (sessionData?.session) {
                     const { data: userData, error: userError } = await supabase.auth.getUser();
 
                     if (userError) {
                         console.error('Error getting user data:', userError);
-                        setLoading(false);
-                        return;
-                    }
+                    } else if (userData?.user) {
+                        const supabaseUser = userData.user;
 
-                    const supabaseUser = userData?.user;
-
-                    if (supabaseUser) {
                         // Extract only the properties we need to avoid rendering objects directly
                         const safeUser = {
                             id: supabaseUser.id,
                             email: supabaseUser.email,
                             user_metadata: supabaseUser.user_metadata,
                             created_at: supabaseUser.created_at,
-                            isSupabase: true
+                            isSupabase: true,
+                            authSource: 'supabase'
                         };
 
+                        console.log('Setting authenticated Supabase user:', safeUser);
                         setUser(safeUser);
+                        setAuthSource('supabase');
+                        // Also save to localStorage for persistence
+                        localStorage.setItem('user', JSON.stringify(safeUser));
                         setLoading(false);
                         return;
                     }
@@ -81,14 +85,28 @@ export const AuthProvider = ({ children }) => {
                 console.error('Error checking Supabase session:', err);
             }
 
+            // Set Aptos authentication flag if any of these exist
+            if (token || savedUser || aptosAccount) {
+                console.log('Aptos authentication detected');
+                setIsAptosAuthenticated(true);
+            }
+
             // Try to get keyless account
             const savedKeylessAccount = getLocalKeylessAccount();
             if (savedKeylessAccount) {
+                console.log('Found keyless account:', savedKeylessAccount);
                 setKeylessAccount(savedKeylessAccount);
-                setUser({
+                const keylessUser = {
+                    id: savedKeylessAccount.accountAddress, // Use address as ID
                     accountAddress: savedKeylessAccount.accountAddress,
                     isKeyless: true,
-                });
+                    authSource: 'aptos_keyless'
+                };
+                console.log('Setting keyless user:', keylessUser);
+                setUser(keylessUser);
+                setAuthSource('aptos_keyless');
+                // Also save to localStorage for persistence
+                localStorage.setItem('user', JSON.stringify(keylessUser));
                 setLoading(false);
                 return;
             }
@@ -97,19 +115,42 @@ export const AuthProvider = ({ children }) => {
                 try {
                     if (savedUser) {
                         // If we have a saved user in localStorage, use it initially
-                        setUser(JSON.parse(savedUser));
+                        const parsedUser = JSON.parse(savedUser);
+                        setUser({
+                            ...parsedUser,
+                            authSource: 'api'
+                        });
+                        setAuthSource('api');
                     }
 
                     // Then fetch the latest user data from the server
-                    const { data } = await userApi.getCurrentUser();
-                    setUser(data);
+                    try {
+                        const { data } = await userApi.getCurrentUser();
+                        const updatedUser = {
+                            ...data,
+                            authSource: 'api'
+                        };
+                        setUser(updatedUser);
+                        setAuthSource('api');
+                        // Update the stored user
+                        localStorage.setItem('user', JSON.stringify(updatedUser));
+                    } catch (apiError) {
+                        console.error('API auth check failed:', apiError);
 
-                    // Update the stored user
-                    localStorage.setItem('user', JSON.stringify(data));
+                        // If API call fails but we still have a saved user, keep using it
+                        if (!savedUser) {
+                            localStorage.removeItem('token');
+                            localStorage.removeItem('user');
+                            setUser(null);
+                            setAuthSource(null);
+                        }
+                    }
                 } catch (error) {
                     console.error('Auth check failed:', error);
                     localStorage.removeItem('token');
                     localStorage.removeItem('user');
+                    setUser(null);
+                    setAuthSource(null);
                 }
             }
 
@@ -143,23 +184,38 @@ export const AuthProvider = ({ children }) => {
                 throw supabaseError;
             }
 
-            // Make sure we're getting the user object correctly
-            const user = data?.user || data?.session?.user;
+            // Get the user data specifically from getUser to ensure correct ID
+            const { data: userData, error: userError } = await supabase.auth.getUser();
 
-            if (!user) {
+            if (userError) {
+                setError(userError.message);
+                throw userError;
+            }
+
+            const supabaseUser = userData?.user;
+
+            if (!supabaseUser) {
                 throw new Error('Failed to retrieve user data from Supabase auth response');
+            }
+
+            // Save Supabase session token as 'token' for consistency
+            if (data?.session?.access_token) {
+                localStorage.setItem('token', data.session.access_token);
             }
 
             // Extract only the properties we need to avoid rendering objects directly
             const safeUser = {
-                id: user.id,
-                email: user.email,
-                user_metadata: user.user_metadata,
-                created_at: user.created_at,
-                isSupabase: true
+                id: supabaseUser.id, // This ID will match auth.uid() in Supabase RLS
+                email: supabaseUser.email,
+                user_metadata: supabaseUser.user_metadata,
+                created_at: supabaseUser.created_at,
+                isSupabase: true,
+                authSource: 'supabase'
             };
 
             setUser(safeUser);
+            setAuthSource('supabase');
+            localStorage.setItem('user', JSON.stringify(safeUser));
             return safeUser;
         } catch (error) {
             setError(error.message || 'Supabase login failed');
@@ -181,23 +237,38 @@ export const AuthProvider = ({ children }) => {
                 throw supabaseError;
             }
 
-            // Make sure we're getting the user object correctly
-            const user = data?.user || data?.session?.user;
+            // Get the user data specifically from getUser to ensure correct ID
+            const { data: userData, error: userError } = await supabase.auth.getUser();
 
-            if (!user) {
+            if (userError) {
+                setError(userError.message);
+                throw userError;
+            }
+
+            const supabaseUser = userData?.user;
+
+            if (!supabaseUser) {
                 throw new Error('Failed to retrieve user data from Supabase auth response');
+            }
+
+            // Save Supabase session token as 'token' for consistency
+            if (data?.session?.access_token) {
+                localStorage.setItem('token', data.session.access_token);
             }
 
             // Extract only the properties we need to avoid rendering objects directly
             const safeUser = {
-                id: user.id,
-                email: user.email,
-                user_metadata: user.user_metadata,
-                created_at: user.created_at,
-                isSupabase: true
+                id: supabaseUser.id, // This ID will match auth.uid() in Supabase RLS
+                email: supabaseUser.email,
+                user_metadata: supabaseUser.user_metadata,
+                created_at: supabaseUser.created_at,
+                isSupabase: true,
+                authSource: 'supabase'
             };
 
             setUser(safeUser);
+            setAuthSource('supabase');
+            localStorage.setItem('user', JSON.stringify(safeUser));
             return safeUser;
         } catch (error) {
             setError(error.message || 'Supabase registration failed');
@@ -265,13 +336,61 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Utility function to format account address correctly
+    const formatAptosAddress = (address) => {
+        if (typeof address === 'string') {
+            return address.startsWith('0x') ? address : `0x${address}`;
+        }
+
+        if (address && typeof address === 'object') {
+            if (address.data && Array.isArray(address.data)) {
+                // Create hex string from data array
+                return '0x' + Array.from(address.data)
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .join('');
+            }
+
+            if (address.toString && typeof address.toString === 'function') {
+                const strValue = address.toString();
+                return strValue.startsWith('0x') ? strValue : `0x${strValue}`;
+            }
+        }
+
+        // Fallback
+        return `0x${address}`;
+    };
+
     const storeKeylessAccount = (account) => {
+        // Check if we have a valid account object
+        if (!account || !account.accountAddress) {
+            console.error('Invalid keyless account object:', account);
+            setError('Invalid account data received. Please try again.');
+            return;
+        }
+
         localStorage.setItem('@aptos/keyless_account', encodeKeylessAccount(account));
         setKeylessAccount(account);
-        setUser({
-            accountAddress: account.accountAddress,
+
+        // Format the account address correctly
+        const accountAddress = formatAptosAddress(account.accountAddress);
+
+        // Verify we have a valid address
+        if (!accountAddress) {
+            console.error('Failed to format account address:', account.accountAddress);
+            setError('Could not process wallet address. Please try reconnecting.');
+            return;
+        }
+
+        const keylessUser = {
+            id: accountAddress, // Use the account address as ID
+            accountAddress: accountAddress, // Store formatted address
             isKeyless: true,
-        });
+            authSource: 'aptos_keyless'
+        };
+        console.log('Storing keyless user:', keylessUser);
+        setUser(keylessUser);
+        // Also save to localStorage for persistence
+        localStorage.setItem('user', JSON.stringify(keylessUser));
     };
 
     const encodeKeylessAccount = (account) => {
@@ -300,16 +419,22 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = async () => {
-        // Sign out from Supabase if the user is authenticated with Supabase
-        if (user?.isSupabase) {
-            await supabaseAuth.signOut();
-        }
+        try {
+            // Sign out from Supabase if the user is authenticated with Supabase
+            if (user?.isSupabase || authSource === 'supabase') {
+                await supabaseAuth.signOut();
+            }
 
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('@aptos/keyless_account');
-        setUser(null);
-        setKeylessAccount(null);
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('@aptos/keyless_account');
+            setUser(null);
+            setKeylessAccount(null);
+            setIsAptosAuthenticated(false);
+            setAuthSource(null);
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
     };
 
     const updateProfile = async (userData) => {
@@ -348,6 +473,9 @@ export const AuthProvider = ({ children }) => {
                 loading,
                 error,
                 keylessAccount,
+                authSource,
+                isAptosAuthenticated,
+                isAuthenticated: !!user || isAptosAuthenticated,
                 login,
                 loginWithSupabase,
                 registerWithSupabase,
@@ -358,8 +486,7 @@ export const AuthProvider = ({ children }) => {
                 getLocalKeylessAccount,
                 register,
                 logout,
-                updateProfile,
-                isAuthenticated: !!user
+                updateProfile
             }}
         >
             {children}
