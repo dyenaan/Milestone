@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Create axios instance
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
     baseURL: API_URL,
@@ -47,15 +47,15 @@ api.interceptors.response.use(
 export const userApi = {
     login: (credentials) => api.post('/auth/login', credentials),
     register: (userData) => api.post('/auth/register', userData),
-    getCurrentUser: () => api.get('/auth/profile'),
+    getCurrentUser: () => api.get('/users/profile'),
     updateProfile: (userData) => api.patch('/users/profile', userData),
 };
 
-// Aptos authentication API calls
+// Aptos API calls
 export const aptosApi = {
-    loginWithAptos: (data) => api.post('/auth/aptos', data),
-    loginWithGoogle: (data) => api.post('/auth/aptos-google', data),
-    loginWithApple: (data) => api.post('/auth/aptos-apple', data),
+    loginWithAptos: (walletData) => api.post('/auth/aptos', walletData),
+    loginWithGoogle: (loginData) => api.post('/auth/aptos/google', loginData),
+    loginWithApple: (loginData) => api.post('/auth/aptos/apple', loginData),
 };
 
 // Jobs API calls
@@ -67,26 +67,13 @@ export const jobsApi = {
     deleteJob: (id) => api.delete(`/jobs/${id}`),
 };
 
-// Blockchain API calls
-export const blockchainApi = {
-    createProject: (data) => api.post('/blockchain/project', data),
-    getProject: (id) => api.get(`/blockchain/project/${id}`),
-    addMilestone: (projectId, data) => api.post(`/blockchain/project/${projectId}/milestone`, data),
-    fundProject: (projectId, data) => api.post(`/blockchain/project/${projectId}/fund`, data),
-    startWork: (projectId, data) => api.post(`/blockchain/project/${projectId}/start`, data),
-    submitMilestone: (projectId, milestoneId, data) =>
-        api.post(`/blockchain/project/${projectId}/milestone/${milestoneId}/submit`, data),
-    reviewMilestone: (projectId, milestoneId, data) =>
-        api.post(`/blockchain/project/${projectId}/milestone/${milestoneId}/review`, data),
-    completeMilestone: (projectId, milestoneId) =>
-        api.post(`/blockchain/project/${projectId}/milestone/${milestoneId}/complete`),
-};
-
-// Reviews API calls
-export const reviewsApi = {
-    createReview: (reviewData) => api.post('/reviews', reviewData),
-    getReviewsForJob: (jobId) => api.get(`/reviews/job/${jobId}`),
-    getReviewsForUser: (userId) => api.get(`/reviews/user/${userId}`),
+// Milestones API calls
+export const milestonesApi = {
+    getMilestonesByJobId: (jobId) => api.get(`/jobs/${jobId}/milestones`),
+    getMilestoneById: (id) => api.get(`/jobs/milestones/${id}`),
+    createMilestone: (jobId, milestoneData) => api.post(`/jobs/${jobId}/milestones`, milestoneData),
+    updateMilestone: (id, milestoneData) => api.patch(`/jobs/milestones/${id}`, milestoneData),
+    deleteMilestone: (id) => api.delete(`/jobs/milestones/${id}`),
 };
 
 // Export default api for other custom requests

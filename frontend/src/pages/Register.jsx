@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 
 const Register = () => {
     const [formData, setFormData] = useState({
+        firstName: '',
+        lastName: '',
         username: '',
         email: '',
         password: '',
@@ -12,7 +14,7 @@ const Register = () => {
     });
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { register } = useAuth();
+    const { register, registerWithSupabase } = useAuth();
     const navigate = useNavigate();
 
     const handleChange = (e) => {
@@ -39,11 +41,13 @@ const Register = () => {
         try {
             // Remove confirmPassword from data sent to API
             const { confirmPassword, ...registerData } = formData;
-            await register(registerData);
+
+            // Use Supabase registration
+            await registerWithSupabase(registerData);
             navigate('/');
         } catch (err) {
             console.error('Registration error:', err);
-            setError(err.response?.data?.message || 'Registration failed. Please try again.');
+            setError(err.message || 'Registration failed. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -66,6 +70,41 @@ const Register = () => {
                     )}
 
                     <form className="space-y-6" onSubmit={handleSubmit}>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+                                    First Name
+                                </label>
+                                <div className="mt-1">
+                                    <input
+                                        id="firstName"
+                                        name="firstName"
+                                        type="text"
+                                        required
+                                        value={formData.firstName}
+                                        onChange={handleChange}
+                                        className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+                                    Last Name
+                                </label>
+                                <div className="mt-1">
+                                    <input
+                                        id="lastName"
+                                        name="lastName"
+                                        type="text"
+                                        required
+                                        value={formData.lastName}
+                                        onChange={handleChange}
+                                        className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
                         <div>
                             <label htmlFor="username" className="block text-sm font-medium text-gray-700">
                                 Username

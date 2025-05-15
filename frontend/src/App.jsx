@@ -10,6 +10,7 @@ import JobDetails from './pages/JobDetails';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Profile from './pages/Profile';
+import SystemStatus from './pages/SystemStatus';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AptosLogin from './components/AptosLogin';
 
@@ -69,6 +70,11 @@ function AppRoutes() {
           <Route path="/profile" element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          } />
+          <Route path="/system-status" element={
+            <ProtectedRoute>
+              <SystemStatus />
             </ProtectedRoute>
           } />
           <Route path="/login/google/callback" element={<AptosLogin />} />
