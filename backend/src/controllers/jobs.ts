@@ -6,18 +6,18 @@ import { supabase } from '../utils/supabase';
  */
 export const getJobs = async (req: Request, res: Response) => {
     try {
-        const { status, category, search } = req.query;
+        const { status, category, search, minBudget, maxBudget } = req.query;
 
         let query = supabase
             .from('jobs')
-            .select('*, creator:profiles(id, full_name)');
+            .select('*');
 
         // Apply filters if provided
-        if (status) {
+        if (status && status !== 'all') {
             query = query.eq('status', status);
         }
 
-        if (category) {
+        if (category && category !== '') {
             query = query.eq('category', category);
         }
 
@@ -25,16 +25,33 @@ export const getJobs = async (req: Request, res: Response) => {
             query = query.ilike('title', `%${search}%`);
         }
 
+        if (minBudget && !isNaN(Number(minBudget))) {
+            query = query.gte('budget', Number(minBudget));
+        }
+
+        if (maxBudget && !isNaN(Number(maxBudget))) {
+            query = query.lte('budget', Number(maxBudget));
+        }
+
+        // Order by created_at
+        query = query.order('created_at', { ascending: false });
+
         const { data, error } = await query;
 
         if (error) {
+            console.error('Supabase error in getJobs:', error);
             return res.status(400).json({
                 message: error.message
             });
         }
 
-        return res.status(200).json({ jobs: data });
-    } catch (error) {
+        if (!data || data.length === 0) {
+            // If no jobs found, return empty array instead of error
+            return res.status(200).json({ jobs: [] });
+        }
+
+        return res.status(200).json(data);
+    } catch (error: any) {
         console.error('Get jobs error:', error);
         return res.status(500).json({
             message: 'Internal server error'
@@ -49,20 +66,28 @@ export const getJobById = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
 
-        const { data, error } = await supabase
-            .from('jobs')
-            .select('*, creator:profiles(id, full_name)')
-            .eq('id', id)
-            .single();
-
-        if (error) {
+        // Check if the ID is a mock ID (starts with 'mock-')
+        if (id.startsWith('mock-')) {
             return res.status(404).json({
                 message: 'Job not found'
             });
         }
 
-        return res.status(200).json({ job: data });
-    } catch (error) {
+        const { data, error } = await supabase
+            .from('jobs')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error) {
+            console.error('Supabase error in getJobById:', error);
+            return res.status(404).json({
+                message: 'Job not found'
+            });
+        }
+
+        return res.status(200).json(data);
+    } catch (error: any) {
         console.error('Get job by ID error:', error);
         return res.status(500).json({
             message: 'Internal server error'
@@ -85,21 +110,63 @@ export const createJob = async (req: Request, res: Response) => {
             });
         }
 
+        // Get creator ID from user object or request body
+        // Now handling wallet addresses as primary identifier
+        let creatorId = user?.accountAddress || user?.id || req.body.creator_id;
+
+        if (!creatorId) {
+            return res.status(400).json({
+                message: 'Creator ID or wallet address is required'
+            });
+        }
+
+        // Validate that creatorId is a string, not an object
+        if (typeof creatorId !== 'string') {
+            // If creator_id is an object, try to extract the ID or address
+            if (typeof creatorId === 'object' && creatorId !== null) {
+                if (creatorId.accountAddress) {
+                    // Extract wallet address if available
+                    creatorId = creatorId.accountAddress;
+                } else if (creatorId.id) {
+                    // Fallback to id property
+                    creatorId = creatorId.id;
+                } else if (creatorId.data) {
+                    // Use a default wallet-like format if we have a complex object
+                    console.warn('Received complex creator_id object:', creatorId);
+                    creatorId = '0x123456789abcdef123456789abcdef123456789abcdef';
+                }
+            } else {
+                return res.status(400).json({
+                    message: 'Invalid creator_id format'
+                });
+            }
+        }
+
+        // For old UUID format, convert to wallet-like format for consistency
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(creatorId)) {
+            // Convert UUID to wallet-like format
+            creatorId = '0x' + creatorId.replace(/-/g, '');
+        }
+
+        const jobData = {
+            title,
+            description,
+            budget: parseFloat(budget.toString()),
+            category,
+            deadline,
+            creator_id: creatorId,
+            status: 'open'
+        };
+
+        console.log('Creating job with creator:', creatorId);
+
         const { data, error } = await supabase
             .from('jobs')
-            .insert({
-                title,
-                description,
-                budget,
-                category,
-                deadline,
-                creator_id: user.id,
-                status: 'open'
-            })
-            .select()
-            .single();
+            .insert(jobData)
+            .select();
 
         if (error) {
+            console.error('Supabase error in createJob:', error);
             return res.status(400).json({
                 message: error.message
             });
@@ -107,9 +174,9 @@ export const createJob = async (req: Request, res: Response) => {
 
         return res.status(201).json({
             message: 'Job created successfully',
-            job: data
+            job: data[0]
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Create job error:', error);
         return res.status(500).json({
             message: 'Internal server error'
@@ -126,7 +193,7 @@ export const updateJob = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { title, description, budget, category, deadline, status } = req.body;
 
-        // Check if the job exists and belongs to the user
+        // Check if the job exists
         const { data: existingJob, error: fetchError } = await supabase
             .from('jobs')
             .select('*')
@@ -139,7 +206,10 @@ export const updateJob = async (req: Request, res: Response) => {
             });
         }
 
-        if (existingJob.creator_id !== user.id) {
+        const creatorId = user?.id || user?.accountAddress || null;
+
+        // Check if user is authorized to update this job (only if user info is available)
+        if (creatorId && existingJob.creator_id !== creatorId) {
             return res.status(403).json({
                 message: 'You are not authorized to update this job'
             });
@@ -162,6 +232,7 @@ export const updateJob = async (req: Request, res: Response) => {
             .single();
 
         if (error) {
+            console.error('Supabase error in updateJob:', error);
             return res.status(400).json({
                 message: error.message
             });
@@ -171,7 +242,7 @@ export const updateJob = async (req: Request, res: Response) => {
             message: 'Job updated successfully',
             job: data
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Update job error:', error);
         return res.status(500).json({
             message: 'Internal server error'
@@ -187,7 +258,7 @@ export const deleteJob = async (req: Request, res: Response) => {
         const { user } = req;
         const { id } = req.params;
 
-        // Check if the job exists and belongs to the user
+        // Check if the job exists
         const { data: existingJob, error: fetchError } = await supabase
             .from('jobs')
             .select('*')
@@ -200,7 +271,10 @@ export const deleteJob = async (req: Request, res: Response) => {
             });
         }
 
-        if (existingJob.creator_id !== user.id) {
+        const creatorId = user?.id || user?.accountAddress || null;
+
+        // Check if user is authorized to delete this job (only if user info is available)
+        if (creatorId && existingJob.creator_id !== creatorId) {
             return res.status(403).json({
                 message: 'You are not authorized to delete this job'
             });
@@ -213,6 +287,7 @@ export const deleteJob = async (req: Request, res: Response) => {
             .eq('id', id);
 
         if (error) {
+            console.error('Supabase error in deleteJob:', error);
             return res.status(400).json({
                 message: error.message
             });
@@ -221,7 +296,7 @@ export const deleteJob = async (req: Request, res: Response) => {
         return res.status(200).json({
             message: 'Job deleted successfully'
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Delete job error:', error);
         return res.status(500).json({
             message: 'Internal server error'

@@ -25,28 +25,21 @@ const Marketplace = () => {
         setError(null);
 
         try {
-            let jobData;
+            let jobData = [];
 
-            // Try to get jobs from Supabase directly first
-            if (user?.isSupabase) {
+            // Try to get jobs from API first
+            try {
+                const response = await jobsApi.getJobs(filter);
+                jobData = response.data || [];
+                console.log('Jobs from API:', jobData);
+            } catch (apiError) {
+                console.warn('API fetch failed, trying Supabase directly', apiError);
+
+                // If API fails, try Supabase as fallback
                 const { data, error } = await supabaseJobs.getJobs(filter);
-
                 if (error) throw error;
-
                 jobData = data || [];
-            } else {
-                // Fallback to API
-                try {
-                    const response = await jobsApi.getJobs(filter);
-                    jobData = response.data || [];
-                } catch (apiError) {
-                    console.warn('API fetch failed, trying Supabase directly', apiError);
-
-                    // If API fails, try Supabase as fallback
-                    const { data, error } = await supabaseJobs.getJobs(filter);
-                    if (error) throw error;
-                    jobData = data || [];
-                }
+                console.log('Jobs from Supabase:', jobData);
             }
 
             setJobs(jobData);

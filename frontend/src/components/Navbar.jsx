@@ -43,7 +43,7 @@ function Navbar() {
                   <BriefcaseIcon className="h-5 w-5 mr-1" />
                   Marketplace
                 </Link>
-                
+
                 <Link
                   to="/milestones"
                   className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-gray-900"

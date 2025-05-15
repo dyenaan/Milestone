@@ -26,28 +26,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        console.error('API Error:', error);
-        if (error.response) {
-            // The request was made and the server responded with a status code
-            // that falls out of the range of 2xx
-            console.error('Response data:', error.response.data);
-            console.error('Response status:', error.response.status);
-
-            // Handle unauthorized errors - logout the user
-            if (error.response.status === 401) {
-                localStorage.removeItem('token');
-                window.location.href = '/login';
-            }
-        }
+        console.error('API Error:', error.response?.data || error.message);
         return Promise.reject(error);
     }
 );
 
 // User API calls
 export const userApi = {
-    login: (credentials) => api.post('/auth/login', credentials),
-    register: (userData) => api.post('/auth/register', userData),
-    getCurrentUser: () => api.get('/users/profile'),
+    getCurrentUser: () => api.get('/users/me'),
     updateProfile: (userData) => api.patch('/users/profile', userData),
 };
 
@@ -60,20 +46,51 @@ export const aptosApi = {
 
 // Jobs API calls
 export const jobsApi = {
-    getJobs: (params) => api.get('/jobs', { params }),
-    getJobById: (id) => api.get(`/jobs/${id}`),
+    getJobs: async (params) => {
+        try {
+            const response = await api.get('/jobs', { params });
+            // Check if the response has a jobs property or is an array itself
+            return {
+                data: Array.isArray(response.data)
+                    ? response.data
+                    : (response.data.jobs || [])
+            };
+        } catch (error) {
+            console.error('Error fetching jobs:', error);
+            throw error;
+        }
+    },
+
+    getJobById: async (id) => {
+        try {
+            const response = await api.get(`/jobs/${id}`);
+            // Check if the response has a job property or is the job object itself
+            return {
+                data: response.data.job || response.data
+            };
+        } catch (error) {
+            console.error(`Error fetching job ${id}:`, error);
+            throw error;
+        }
+    },
+
     createJob: (jobData) => api.post('/jobs', jobData),
     updateJob: (id, jobData) => api.patch(`/jobs/${id}`, jobData),
     deleteJob: (id) => api.delete(`/jobs/${id}`),
+
+    // Milestone-related methods
+    getMilestones: (jobId) => api.get(`/jobs/${jobId}/milestones`),
+    createMilestone: (jobId, milestoneData) => api.post(`/jobs/${jobId}/milestones`, milestoneData),
 };
 
 // Milestones API calls
 export const milestonesApi = {
-    getMilestonesByJobId: (jobId) => api.get(`/jobs/${jobId}/milestones`),
-    getMilestoneById: (id) => api.get(`/jobs/milestones/${id}`),
-    createMilestone: (jobId, milestoneData) => api.post(`/jobs/${jobId}/milestones`, milestoneData),
-    updateMilestone: (id, milestoneData) => api.patch(`/jobs/milestones/${id}`, milestoneData),
-    deleteMilestone: (id) => api.delete(`/jobs/milestones/${id}`),
+    getMilestonesByJob: (jobId) => api.get(`/milestones/job/${jobId}`),
+    getMilestone: (id) => api.get(`/milestones/${id}`),
+    createMilestone: (milestoneData) => api.post('/milestones', milestoneData),
+    createMilestoneForJob: (jobId, milestoneData) => api.post(`/jobs/${jobId}/milestones`, milestoneData),
+    updateMilestone: (id, milestoneData) => api.patch(`/milestones/${id}`, milestoneData),
+    deleteMilestone: (id) => api.delete(`/milestones/${id}`),
 };
 
 // Export default api for other custom requests

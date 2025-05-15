@@ -1,35 +1,43 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
+import helmet from 'helmet';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
-import jobRoutes from './routes/jobs';
+import jobsRoutes from './routes/jobs';
+import milestonesRoutes from './routes/milestones';
+import { errorHandler } from './middleware/error';
 
-// Load environment variables
-dotenv.config();
-
+// Create Express server
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(express.json());
-app.use(cors());
-app.use(helmet());
+// Express configuration
 app.use(morgan('dev'));
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/jobs', jobRoutes);
+app.use(helmet({
+    contentSecurityPolicy: false
+}));
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok', message: 'Server is running' });
+    res.json({ status: 'ok', message: 'Server is healthy' });
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-}); 
+// API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/jobs', jobsRoutes);
+app.use('/api/milestones', milestonesRoutes);
+
+// Error handling middleware
+app.use(errorHandler);
+
+// Start Express server
+const port = process.env.PORT || 8000;
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+});
+
+export default app; 

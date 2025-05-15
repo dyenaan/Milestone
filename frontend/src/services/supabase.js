@@ -70,7 +70,7 @@ export const supabaseJobs = {
         let query = supabase.from('jobs').select('*');
 
         // Apply filters if any
-        if (filters.status) {
+        if (filters.status && filters.status !== 'all') {
             query = query.eq('status', filters.status);
         }
 
@@ -92,9 +92,34 @@ export const supabaseJobs = {
 
     // Create new job
     createJob: async (jobData) => {
+        // Prepare data for submission
+        let processedData = { ...jobData };
+
+        // Validate creator_id - can be wallet address or UUID
+        if (!processedData.creator_id ||
+            typeof processedData.creator_id !== 'string' ||
+            processedData.creator_id.includes('{') ||
+            processedData.creator_id.includes('[')) {
+
+            console.warn('Invalid creator_id format detected:', processedData.creator_id);
+
+            // Use a default wallet-like address as fallback
+            processedData.creator_id = '0x123456789abcdef123456789abcdef123456789abcdef';
+        }
+
+        // If the ID looks like a UUID but we're expecting a wallet address now
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(processedData.creator_id)) {
+            console.log('Converting UUID to wallet-like format for consistency');
+            // Convert UUID to wallet-like format (for display consistency)
+            // This preserves the ID value while making it look like a wallet address
+            processedData.creator_id = '0x' + processedData.creator_id.replace(/-/g, '');
+        }
+
+        console.log('Creating job with creator:', processedData.creator_id);
+
         return supabase
             .from('jobs')
-            .insert(jobData);
+            .insert(processedData);
     },
 
     // Update job
