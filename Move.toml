@@ -1,0 +1,9 @@
+[package]
+name = "escrow_fresh"
+version = "1.0.0"
+
+[dependencies]
+AptosFramework = { local = "../aptos-core/aptos-move/framework/aptos-framework" }
+
+[addresses]
+escrow = "0xaf84d3ed53850293b21808c76880b3e386ac290fccf921ab7ea87a44b95a34f9"
