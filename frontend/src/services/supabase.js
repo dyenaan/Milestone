@@ -85,13 +85,37 @@ export const supabaseApplications = {
             return { data: [], error: null };
         }
 
+        // Fixed UUID for Aptos wallet users (fallback)
+        const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
+
+        // Format check - extract string format if it's an object
+        let formattedUserId = userId;
+
+        // Handle Aptos wallet address objects
+        if (typeof userId === 'object') {
+            // If it's an object with a uuid property (from AuthContext), use that
+            if (userId.uuid) {
+                console.log('Using provided UUID from user object:', userId.uuid);
+                formattedUserId = userId.uuid;
+            } else if (userId.data instanceof Uint8Array) {
+                console.log('Using fixed UUID for Aptos user in application lookup');
+                formattedUserId = APTOS_USER_UUID;
+            }
+        }
+
         // Format check - if UUID convert to both formats for query
-        let userIdFormats = [userId];
+        let userIdFormats = [formattedUserId];
+
+        // Always include the Aptos UUID for wallet address objects
+        if (!userIdFormats.includes(APTOS_USER_UUID) &&
+            (typeof userId === 'object' || (typeof userId === 'string' && userId.startsWith('0x')))) {
+            userIdFormats.push(APTOS_USER_UUID);
+        }
 
         // If it's a UUID, add the wallet-like format
-        if (typeof userId === 'string' &&
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-            userIdFormats.push('0x' + userId.replace(/-/g, ''));
+        if (typeof formattedUserId === 'string' &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(formattedUserId)) {
+            userIdFormats.push('0x' + formattedUserId.replace(/-/g, ''));
         }
 
         // If it's already a wallet-like format (starting with 0x), we're good
@@ -127,6 +151,9 @@ export const supabaseApplications = {
     // Create new application
     createApplication: async (applicationData) => {
         try {
+            // Fixed UUID for Aptos wallet users (fallback)
+            const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
+
             // Ensure application data has the required fields
             if (!applicationData.job_id) {
                 console.warn('No job_id provided for application');
@@ -144,6 +171,19 @@ export const supabaseApplications = {
                         message: 'Applicant ID is required'
                     }
                 };
+            }
+
+            // Process applicant_id if it's an Aptos wallet address
+            if (typeof applicationData.applicant_id === 'object') {
+                // If it's an object with a uuid property (from AuthContext), use that
+                if (applicationData.applicant_id.uuid) {
+                    applicationData.applicant_id = applicationData.applicant_id.uuid;
+                    console.log('Using UUID from user object for application:', applicationData.applicant_id);
+                } else if (applicationData.applicant_id.data instanceof Uint8Array) {
+                    // Use fixed UUID
+                    applicationData.applicant_id = APTOS_USER_UUID;
+                    console.log('Using fixed UUID for Aptos user when creating application:', APTOS_USER_UUID);
+                }
             }
 
             console.log('Creating application with data:', applicationData);
@@ -224,6 +264,9 @@ export const supabaseJobs = {
     getJobs: async (filters = {}) => {
         let query = supabase.from('jobs').select('*');
 
+        // Fixed UUID for Aptos wallet users (fallback)
+        const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
+
         // Apply filters if any
         if (filters.status && filters.status !== 'all') {
             query = query.eq('status', filters.status);
@@ -234,7 +277,23 @@ export const supabaseJobs = {
         }
 
         if (filters.creator_id) {
-            query = query.eq('creator_id', filters.creator_id);
+            // Format the creator_id if it's an Aptos wallet object
+            let formattedCreatorId = filters.creator_id;
+
+            // If it's an object with a uuid property (from AuthContext), use that
+            if (typeof filters.creator_id === 'object' && filters.creator_id.uuid) {
+                formattedCreatorId = filters.creator_id.uuid;
+                console.log('Using UUID from user object:', formattedCreatorId);
+            } else if (typeof filters.creator_id === 'object' && filters.creator_id.data instanceof Uint8Array) {
+                // Use fixed UUID for Aptos wallet addresses
+                formattedCreatorId = APTOS_USER_UUID;
+                console.log('Using fixed UUID for Aptos user in job lookup:', formattedCreatorId);
+            } else if (typeof filters.creator_id === 'string' && filters.creator_id.startsWith('0x')) {
+                // Also check if we should use the Aptos UUID for this hex address
+                // This could be further refined based on application logic
+            }
+
+            query = query.eq('creator_id', formattedCreatorId);
         }
 
         const response = await query.order('created_at', { ascending: false });
@@ -261,6 +320,22 @@ export const supabaseJobs = {
 
     // Create new job
     createJob: async (jobData) => {
+        // Fixed UUID for Aptos wallet users (fallback)
+        const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
+
+        // Process creator_id if it's an Aptos wallet address
+        if (jobData.creator_id) {
+            // If it's an object with a uuid property (from AuthContext), use that
+            if (typeof jobData.creator_id === 'object' && jobData.creator_id.uuid) {
+                jobData.creator_id = jobData.creator_id.uuid;
+                console.log('Using UUID from user object for job creation:', jobData.creator_id);
+            } else if (typeof jobData.creator_id === 'object' && jobData.creator_id.data instanceof Uint8Array) {
+                // Use fixed UUID
+                jobData.creator_id = APTOS_USER_UUID;
+                console.log('Using fixed UUID for Aptos user when creating job:', APTOS_USER_UUID);
+            }
+        }
+
         try {
             // Prepare data for submission
             let processedData = { ...jobData };

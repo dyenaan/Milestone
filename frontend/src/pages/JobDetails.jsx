@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { supabaseJobs, supabaseApplications } from '../services/supabase';
 import { checkAuth, getCurrentUser } from '../utils/authRedirect';
 
 function JobDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,6 +20,10 @@ function JobDetails() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isCreator, setIsCreator] = useState(false);
+
+  // Check if user came to reapply
+  const urlParams = new URLSearchParams(location.search);
+  const shouldReapply = urlParams.get('reapply') === 'true';
 
   // Check authentication status
   useEffect(() => {
@@ -49,8 +54,13 @@ function JobDetails() {
 
       setIsCreator(userIsCreator);
       console.log('User is the creator of this job:', userIsCreator);
+
+      // Auto-open application form if reapplying
+      if (shouldReapply && !userIsCreator && isAuthenticated) {
+        setApplying(true);
+      }
     }
-  }, [job, currentUser]);
+  }, [job, currentUser, shouldReapply, isAuthenticated]);
 
   const fetchJobDetails = async () => {
     setLoading(true);
@@ -129,19 +139,16 @@ function JobDetails() {
         throw new Error('Unable to get user information. Please try logging in again.');
       }
 
+      // Fixed UUID for all Aptos wallet users
+      const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
+
       // Determine the best ID to use (Aptos or Supabase)
       let applicantId;
 
-      if (user.accountAddress) {
-        // This is an Aptos user - ensure proper formatting
-        applicantId = formatAptosAddress(user.accountAddress);
-
-        // Validate that we got a proper address
-        if (!applicantId) {
-          throw new Error('Could not extract a valid wallet address. Please reconnect your wallet.');
-        }
-
-        console.log('Using Aptos wallet address for application:', applicantId);
+      if (user.accountAddress || user.isKeyless) {
+        // This is an Aptos user - use the fixed UUID
+        applicantId = APTOS_USER_UUID;
+        console.log('Using fixed UUID for Aptos wallet application:', applicantId);
       } else if (user.id) {
         // This is a Supabase user
         applicantId = user.id;
@@ -182,11 +189,12 @@ function JobDetails() {
         estimatedTime: '',
       });
 
-      // Close the application form after delay
+      // Redirect to dashboard after showing success message
       setTimeout(() => {
         setApplying(false);
         setSubmitSuccess(false);
-      }, 3000);
+        navigate('/dashboard'); // Redirect to dashboard
+      }, 5000);
     } catch (err) {
       console.error('Error submitting proposal:', err);
       setError(err.message || 'Failed to submit proposal. Please try again.');
@@ -424,19 +432,25 @@ function JobDetails() {
               )}
             </div>
           ) : (
-            <div className="mt-4">
+            <div className="mt-4 relative">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Submit Your Proposal</h3>
 
               {submitSuccess && (
-                <div className="mb-6 bg-green-50 border-l-4 border-green-400 p-4">
-                  <div className="flex">
-                    <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <div className="absolute inset-0 bg-white bg-opacity-90 z-10 flex flex-col items-center justify-center rounded-lg transition-all duration-500 ease-in-out transform scale-100">
+                  <div className="flex flex-col items-center justify-center p-6 text-center">
+                    <div className="rounded-full bg-green-100 p-3 mb-4">
+                      <svg className="h-12 w-12 text-green-600 animate-bounce" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
                     </div>
-                    <div className="ml-3">
-                      <p className="text-sm text-green-700">Your proposal has been submitted successfully!</p>
+                    <h3 className="text-xl font-bold text-green-800 mb-2 animate-pulse">Application Submitted!</h3>
+                    <p className="text-green-700 mb-4">Your proposal has been sent to the employer</p>
+                    <div className="w-16 h-1 bg-green-500 mb-4 animate-pulse"></div>
+                    <p className="text-sm text-gray-600 mb-2">Redirecting to your dashboard...</p>
+                    <div className="flex justify-center items-center space-x-1">
+                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
                     </div>
                   </div>
                 </div>

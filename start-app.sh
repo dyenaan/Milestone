@@ -1,32 +1,38 @@
 #!/bin/bash
 
-echo "Setting up Milestone Platform..."
+# Colors for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# Check if we have access to Supabase CLI
-if command -v supabase &> /dev/null; then
-  echo "Supabase CLI detected, applying database setup..."
-  
-  # If you have Supabase running locally, uncomment this line
-  # supabase db reset -f
-  
-  # Alternative: Use the Supabase dashboard to manually run supabase-setup.sql
-  echo "IMPORTANT: For Supabase setup, please manually run supabase-setup.sql in the Supabase dashboard SQL editor"
-  echo "This will create the necessary tables and permissions for the application to work correctly"
-  echo ""
-else
-  echo "Supabase CLI not found. Please manually run supabase-setup.sql in the Supabase dashboard SQL editor"
-  echo ""
+echo -e "${BLUE}Starting the Freelancer Platform App...${NC}"
+
+# Check if frontend directory exists
+if [ ! -d "frontend" ]; then
+  echo -e "${RED}Frontend directory not found!${NC}"
+  exit 1
 fi
 
-# Change to frontend directory
+# Navigate to frontend directory
 cd frontend
 
-# Install dependencies (if needed)
+# Check if node_modules exists, if not run npm install
 if [ ! -d "node_modules" ]; then
-  echo "Installing frontend dependencies..."
+  echo -e "${YELLOW}Node modules not found. Installing dependencies...${NC}"
   npm install
 fi
 
-# Start the development server
-echo "Starting frontend development server..."
-npm run start 
+# Start the frontend app
+echo -e "${GREEN}Starting frontend server...${NC}"
+npm run dev
+
+# This script can be expanded to start the backend server as well
+# For example:
+# cd ../backend
+# npm run dev &
+# 
+# Use & at the end to run in background
+
+exit 0 

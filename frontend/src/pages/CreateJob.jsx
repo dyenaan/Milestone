@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../services/supabase';
+import { supabase, supabaseJobs } from '../services/supabase';
 import { useAuth } from '../context/AuthContext';
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import AuthStatus from '../components/AuthStatus';
 
-// Get environment variables
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+// Use the same values defined in supabase.js instead of environment variables
+const SUPABASE_URL = 'https://okfjxtvdwdvflfjykpyi.supabase.co';
+// We'll remove direct service role key usage and rely on the supabase client instead
+// const SUPABASE_SERVICE_ROLE_KEY = 'your-service-role-key-here';
+
+// Fixed UUID for Aptos wallet users
+const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
 
 const CreateJob = () => {
   const [jobData, setJobData] = useState({
@@ -204,21 +208,16 @@ const CreateJob = () => {
     setError(null);
 
     try {
-      // Check if required environment variables are available
-      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-        throw new Error('Missing environment variables. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_SERVICE_ROLE_KEY are set in your .env file.');
-      }
-
       // Validate milestones
       if (!validateMilestones()) {
         throw new Error('Please check your milestones. All milestones must have required fields and total amount must equal the job budget.');
       }
 
-      // Always use this hardcoded UUID that works with RLS policy
-      const creatorId = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
-      console.log('Service role key approach - Using hardcoded creator_id:', creatorId);
+      // Use the fixed UUID for Aptos users
+      const creatorId = APTOS_USER_UUID;
+      console.log('Using Aptos user UUID for job creator:', creatorId);
 
-      // Format job data - EXACTLY match the structure from the successful job
+      // Format job data
       const formattedJobData = {
         title: jobData.title,
         description: jobData.description,
@@ -229,39 +228,23 @@ const CreateJob = () => {
         creator_id: creatorId
       };
 
-      console.log('Sending job data to Supabase with service role key:', formattedJobData);
+      console.log('Creating job with data:', formattedJobData);
 
-      // Use fetch directly with the service role key to bypass RLS
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/jobs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_SERVICE_ROLE_KEY,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(formattedJobData)
-      });
+      // Use the supabaseJobs helper function instead of direct API calls
+      const createdJob = await supabaseJobs.createJob(formattedJobData);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Job creation failed with service role key approach:', errorData);
-        throw new Error(`Failed to create job: ${errorData.message || response.statusText}`);
+      if (!createdJob || !createdJob.id) {
+        throw new Error('Failed to create job - no job ID returned');
       }
 
-      const directJobData = await response.json();
-      console.log('Job created successfully with service role key:', directJobData);
+      console.log('Job created successfully:', createdJob);
 
-      // Now create all the milestones linked to this job using the same approach
-      if (!directJobData || !directJobData[0] || !directJobData[0].id) {
-        throw new Error('Invalid job creation response - missing job ID');
-      }
-
-      console.log('Creating milestones for job ID:', directJobData[0].id);
+      // Now create all the milestones linked to this job
+      console.log('Creating milestones for job ID:', createdJob.id);
 
       for (const milestone of milestones) {
         const formattedMilestone = {
-          job_id: directJobData[0].id,
+          job_id: createdJob.id,
           title: milestone.title,
           description: milestone.description,
           amount: parseFloat(milestone.amount),
@@ -269,21 +252,13 @@ const CreateJob = () => {
           status: 'pending'
         };
 
-        const milestoneResponse = await fetch(`${SUPABASE_URL}/rest/v1/milestones`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_SERVICE_ROLE_KEY,
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            'Prefer': 'return=representation'
-          },
-          body: JSON.stringify(formattedMilestone)
-        });
+        const { error: milestoneError } = await supabase
+          .from('milestones')
+          .insert(formattedMilestone);
 
-        if (!milestoneResponse.ok) {
-          const milestoneErrorData = await milestoneResponse.json();
-          console.error('Milestone creation error:', milestoneErrorData);
-          throw new Error(`Failed to create milestone: ${milestoneErrorData.message || milestoneResponse.statusText}`);
+        if (milestoneError) {
+          console.error('Milestone creation error:', milestoneError);
+          throw new Error(`Failed to create milestone: ${milestoneError.message}`);
         }
       }
 
@@ -394,25 +369,20 @@ const CreateJob = () => {
     return address;
   };
 
-  // Direct test button for debugging RLS
+  // Direct test button for debugging 
   const testRlsDirectly = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Check if required environment variables are available
-      if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-        throw new Error('Missing environment variables. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_SERVICE_ROLE_KEY are set in your .env file.');
-      }
+      // Use the fixed UUID for Aptos users
+      const creatorId = APTOS_USER_UUID;
+      console.log('Test job - using Aptos user UUID:', creatorId);
 
-      // Always use the hardcoded UUID that works
-      const creatorId = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
-      console.log('Test job - using the hardcoded UUID:', creatorId);
-
-      // Create a simple test job - EXACTLY match the structure from the successful job
+      // Create a simple test job
       const testJob = {
-        title: 'RLS Test Job',
-        description: 'Testing direct API access with service role key',
+        title: 'Test Job',
+        description: 'Testing job creation with Supabase client',
         budget: 100,
         category: 'Development',
         deadline: new Date().toISOString().split('T')[0],
@@ -420,35 +390,20 @@ const CreateJob = () => {
         creator_id: creatorId
       };
 
-      // Use fetch with service role key to bypass RLS
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/jobs`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_SERVICE_ROLE_KEY,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(testJob)
-      });
+      // Use the supabaseJobs helper function
+      const createdJob = await supabaseJobs.createJob(testJob);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Test job creation failed:', errorData);
-        throw new Error(`Failed to create test job: ${errorData.message || response.statusText}`);
+      if (!createdJob) {
+        throw new Error('Failed to create test job');
       }
 
-      const data = await response.json();
+      console.log('Test job created successfully:', createdJob);
+      setError('Test successful! Job created with ID: ' + createdJob.id);
 
-      setSuccess(true);
-      console.log('TEST JOB CREATED SUCCESSFULLY:', data);
-      setTimeout(() => {
-        setSuccess(false);
-        setError('TEST PASSED ✓ Now try the regular form.');
-      }, 2000);
+      setTimeout(() => navigate('/marketplace'), 2000);
     } catch (err) {
-      console.error('Test failed:', err);
-      setError(err.message);
+      console.error('Test job creation failed:', err);
+      setError(err.message || 'Failed to create test job');
     } finally {
       setLoading(false);
     }

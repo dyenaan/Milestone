@@ -4,6 +4,9 @@ import { userApi, aptosApi } from '../services/api';
 import { KeylessAccount } from '@aptos-labs/ts-sdk';
 import { supabase, supabaseAuth } from '../services/supabase';
 
+// Fixed UUID for all Aptos wallet users
+const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
+
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -96,13 +99,20 @@ export const AuthProvider = ({ children }) => {
             if (savedKeylessAccount) {
                 console.log('Found keyless account:', savedKeylessAccount);
                 setKeylessAccount(savedKeylessAccount);
+
+                // Format the account address correctly
+                const accountAddress = formatAptosAddress(savedKeylessAccount.accountAddress);
+
+                // Use fixed UUID for all Aptos users
                 const keylessUser = {
                     id: savedKeylessAccount.accountAddress, // Use address as ID
                     accountAddress: savedKeylessAccount.accountAddress,
+                    uuid: APTOS_USER_UUID, // Always use the fixed UUID
                     isKeyless: true,
                     authSource: 'aptos_keyless'
                 };
-                console.log('Setting keyless user:', keylessUser);
+
+                console.log('Setting keyless user with fixed UUID:', keylessUser);
                 setUser(keylessUser);
                 setAuthSource('aptos_keyless');
                 // Also save to localStorage for persistence
@@ -360,7 +370,7 @@ export const AuthProvider = ({ children }) => {
         return `0x${address}`;
     };
 
-    const storeKeylessAccount = (account) => {
+    const storeKeylessAccount = async (account) => {
         // Check if we have a valid account object
         if (!account || !account.accountAddress) {
             console.error('Invalid keyless account object:', account);
@@ -381,13 +391,16 @@ export const AuthProvider = ({ children }) => {
             return;
         }
 
+        // Use the fixed UUID for all Aptos wallet addresses
         const keylessUser = {
             id: accountAddress, // Use the account address as ID
             accountAddress: accountAddress, // Store formatted address
+            uuid: APTOS_USER_UUID, // Always use the fixed UUID
             isKeyless: true,
             authSource: 'aptos_keyless'
         };
-        console.log('Storing keyless user:', keylessUser);
+
+        console.log('Storing keyless user with fixed UUID:', keylessUser);
         setUser(keylessUser);
         // Also save to localStorage for persistence
         localStorage.setItem('user', JSON.stringify(keylessUser));
