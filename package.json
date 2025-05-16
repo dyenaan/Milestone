@@ -1,0 +1,24 @@
+{
+  "name": "escrow_fresh",
+  "version": "1.0.0",
+  "description": "A decentralized escrow system implemented on the Aptos blockchain. This contract enables secure freelance work agreements with milestone-based payments and a dispute resolution system.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@albedo-link/intent": "^0.12.0",
+    "@aptos-labs/ts-sdk": "^1.33.1",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "fs-extra": "^11.3.0",
+    "path": "^0.12.7",
+    "stellar-hd-wallet": "^1.0.2",
+    "stellar-sdk": "^13.3.0"
+  }
+}

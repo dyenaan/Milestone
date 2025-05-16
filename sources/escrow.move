@@ -5,6 +5,7 @@ module escrow::escrow {
     use aptos_framework::event;    // For event handling
     use aptos_framework::account;  // For account operations and event handle creation
     use std::error;          // For custom error codes
+    use aptos_framework::coin;     // For token transfers
     
     // ----------------- CONSTANTS -----------------
     
@@ -34,35 +35,39 @@ module escrow::escrow {
     const ERROR_MILESTONE_NOT_IN_DISPUTE: u64 = 8;
     const ERROR_JOB_EXISTS: u64 = 9;
     const ERROR_INVALID_REVIEWER_COUNT: u64 = 10;
+    const ERROR_INSUFFICIENT_FUNDS: u64 = 11;
+    const ERROR_TRANSFER_FAILED: u64 = 12;
     
     // ----------------- DATA STRUCTURES -----------------
     
     /// Represents a reviewer's vote
     struct Vote has store, drop, copy {
         reviewer: address,
-        vote: u8,  // 1 = approve, 2 = reject
+        vote: u8,
     }
-    
-    /// Represents an individual milestone in the job
+
     struct Milestone has store, drop, copy {
         description: vector<u8>,
         amount: u64,
-        status: u8,  // Use status constants
-        submission_evidence: vector<u8>,  // Evidence URL or hash
-        reviewers: vector<address>,  // List of assigned reviewers
-        votes: vector<Vote>,  // Votes from reviewers
+        status: u8,
+        submission_evidence: vector<u8>,
+        reviewers: vector<address>,
+        votes: vector<Vote>,
+        was_disputed: bool,
     }
-    
-    /// Main job structure stored on-chain under the client's account
+
     struct Job has key, store {
         client: address,
         freelancer: address,
         milestones: vector<Milestone>,
         current_step: u64,
         is_active: bool,
-        platform_address: address,  // Address of your platform
-        min_votes_required: u64,    // Votes needed for decision (typically 3)
-        total_milestones: u64,      // Total number of milestones
+        platform_address: address,
+        min_votes_required: u64,
+        total_milestones: u64,
+        escrow_address: address,
+        total_fee_reserved: u64,
+        had_dispute: bool,
     }
     
     /// Event payload emitted when a milestone is approved
@@ -122,53 +127,65 @@ module escrow::escrow {
         job_completed: event::EventHandle<JobCompletedEvent>,
     }
     
+    /// Resource for storing escrowed funds
+    struct EscrowedFunds<phantom CoinType> has key {
+        funds: coin::Coin<CoinType>,
+    }
+    
     // ----------------- PUBLIC FUNCTIONS -----------------
     
-    // Add a simple test function to directly create a job
-    public entry fun test_create_job(
-        account: &signer, 
+    // Add a test function to directly create a job with funds
+    public entry fun create_job_with_funds<CoinType>(
+        account: &signer,
         freelancer: address,
+        milestone_amounts: vector<u64>,
         platform_address: address,
         min_votes_required: u64
-    ) {
+    ) acquires EscrowedFunds {
         let sender_addr = signer::address_of(account);
-        
-        // Check if Job already exists
         assert!(!exists<Job>(sender_addr), error::already_exists(ERROR_JOB_EXISTS));
-        
-        // Create three milestones with amount 100 each
+
+        let total_amount = 0u64;
+        let i = 0;
+        let total_milestones = vector::length(&milestone_amounts);
+
+        while (i < total_milestones) {
+            total_amount = total_amount + *vector::borrow(&milestone_amounts, i);
+            i = i + 1;
+        };
+
+        let total_fee_reserved = total_amount * 10 / 100;
+        let total_required = total_amount + total_fee_reserved;
+
+        assert!(coin::balance<CoinType>(sender_addr) >= total_required, error::invalid_state(ERROR_INSUFFICIENT_FUNDS));
+
+        if (!exists<EscrowedFunds<CoinType>>(sender_addr)) {
+            move_to(account, EscrowedFunds<CoinType> {
+                funds: coin::zero<CoinType>()
+            });
+        };
+
+        let escrow_funds = &mut borrow_global_mut<EscrowedFunds<CoinType>>(sender_addr).funds;
+        let payment = coin::withdraw<CoinType>(account, total_required);
+        coin::merge(escrow_funds, payment);
+
         let milestones = vector::empty<Milestone>();
-        
-        // Add milestones
-        vector::push_back(&mut milestones, Milestone {
-            description: b"Step 1",
-            amount: 100,
-            status: STATUS_PENDING,
-            submission_evidence: vector::empty<u8>(),
-            reviewers: vector::empty<address>(),
-            votes: vector::empty<Vote>(),
-        });
-        
-        vector::push_back(&mut milestones, Milestone {
-            description: b"Step 2",
-            amount: 100,
-            status: STATUS_PENDING,
-            submission_evidence: vector::empty<u8>(),
-            reviewers: vector::empty<address>(),
-            votes: vector::empty<Vote>(),
-        });
-        
-        vector::push_back(&mut milestones, Milestone {
-            description: b"Step 3",
-            amount: 100,
-            status: STATUS_PENDING,
-            submission_evidence: vector::empty<u8>(),
-            reviewers: vector::empty<address>(),
-            votes: vector::empty<Vote>(),
-        });
-        
-        // Create and store the job
-        let job = Job {
+        let j = 0;
+        while (j < total_milestones) {
+            let amt = *vector::borrow(&milestone_amounts, j);
+            vector::push_back(&mut milestones, Milestone {
+                description: b"Step",
+                amount: amt,
+                status: STATUS_PENDING,
+                submission_evidence: vector::empty<u8>(),
+                reviewers: vector::empty<address>(),
+                votes: vector::empty<Vote>(),
+                was_disputed: false
+            });
+            j = j + 1;
+        };
+
+        move_to(account, Job {
             client: sender_addr,
             freelancer,
             milestones,
@@ -176,10 +193,11 @@ module escrow::escrow {
             is_active: true,
             platform_address,
             min_votes_required,
-            total_milestones: 3,
-        };
-        
-        move_to(account, job);
+            total_milestones,
+            escrow_address: sender_addr,
+            total_fee_reserved,
+            had_dispute: false
+        });
     }
     
     /// Initializes event storage for an account
@@ -195,54 +213,6 @@ module escrow::escrow {
                 job_completed: account::new_event_handle<JobCompletedEvent>(account),
             });
         }
-    }
-    
-    /// Creates a new job with specified milestones
-    public entry fun create_job(
-        account: &signer,
-        freelancer: address,
-        milestone_amounts: vector<u64>,
-        platform_address: address,
-        min_votes_required: u64
-    ) {
-        let sender_addr = signer::address_of(account);
-        
-        // Check if Job already exists
-        assert!(!exists<Job>(sender_addr), error::already_exists(ERROR_JOB_EXISTS));
-        
-        // Create an empty vector to store milestones
-        let milestones = vector::empty<Milestone>();
-        let i = 0;
-        let total_milestones = vector::length(&milestone_amounts);
-        
-        // Iterate through milestone amounts and create milestone objects
-        while (i < total_milestones) {
-            let amount = *vector::borrow(&milestone_amounts, i);
-            vector::push_back(&mut milestones, Milestone {
-                description: b"Step",  // Default description
-                amount,
-                status: STATUS_PENDING,
-                submission_evidence: vector::empty<u8>(),
-                reviewers: vector::empty<address>(),
-                votes: vector::empty<Vote>(),
-            });
-            i = i + 1;
-        };
-        
-        // Create the job structure
-        let job = Job {
-            client: sender_addr,
-            freelancer,
-            milestones,
-            current_step: 0,  // Start with the first milestone
-            is_active: true,
-            platform_address,  // Explicitly use the provided platform address
-            min_votes_required,
-            total_milestones,
-        };
-        
-        // Store the job in the client's account storage
-        move_to(account, job);
     }
     
     /// Function for freelancer to submit work for a milestone
@@ -284,8 +254,8 @@ module escrow::escrow {
         );
     }
     
-    /// Function for client to directly approve a milestone (no dispute)
-    public entry fun approve_milestone(account: &signer) acquires Job, EscrowEvents {
+    /// Function for client to directly approve a milestone (no dispute) and release funds
+    public entry fun approve_milestone<CoinType>(account: &signer) acquires Job, EscrowEvents, EscrowedFunds {
         // Get the account address
         let addr = signer::address_of(account);
         
@@ -298,6 +268,16 @@ module escrow::escrow {
         
         // Update the milestone status
         milestone.status = STATUS_APPROVED;
+        
+        // Transfer funds to freelancer from escrow
+        let amount = milestone.amount;
+        let escrow_funds = &mut borrow_global_mut<EscrowedFunds<CoinType>>(addr).funds;
+        
+        // Extract the exact amount from escrow funds
+        let payment = coin::extract(escrow_funds, amount);
+        
+        // Deposit to freelancer
+        coin::deposit(job.freelancer, payment);
         
         // Move to the next milestone
         job.current_step = i + 1;
@@ -425,12 +405,12 @@ module escrow::escrow {
     }
     
     /// Function for reviewers to vote on a milestone
-    public entry fun cast_vote(
+    public entry fun cast_vote<CoinType>(
         account: &signer,
         client: address,
         milestone_index: u64,
         vote_value: u8
-    ) acquires Job, EscrowEvents {
+    ) acquires Job, EscrowEvents, EscrowedFunds {
         let reviewer_addr = signer::address_of(account);
         
         // Get job from client's address
@@ -505,7 +485,19 @@ module escrow::escrow {
             if (approve_count >= MIN_VOTES_REQUIRED) {
                 milestone.status = STATUS_APPROVED;
                 
-                // Emit milestone approved event to trigger payment
+                // Transfer funds to freelancer if approved
+                let amount = milestone.amount;
+                
+                // Get the escrow funds from the client's account
+                let escrow_funds = &mut borrow_global_mut<EscrowedFunds<CoinType>>(client).funds;
+                
+                // Extract the amount from escrow funds
+                let payment = coin::extract(escrow_funds, amount);
+                
+                // Deposit to freelancer
+                coin::deposit(job.freelancer, payment);
+                
+                // Emit milestone approved event
                 event::emit_event(
                     &mut events.milestone_approved,
                     MilestoneApprovedEvent {
@@ -553,7 +545,6 @@ module escrow::escrow {
     }
     
     /// Remove a completed job
-    /// Remove a completed job
     public entry fun remove_job(account: &signer) acquires Job {
         let sender_addr = signer::address_of(account);
         
@@ -575,20 +566,26 @@ module escrow::escrow {
             is_active: _,
             platform_address: _,
             min_votes_required: _,
-            total_milestones: _
+            total_milestones: _,
+            escrow_address: _,
+            total_fee_reserved: _,
+            had_dispute: _
         } = move_from<Job>(sender_addr);
+
         
         // We don't need to do anything with the fields, they will be dropped
     }
     
     /// Get job details
+    #[view]
     public fun get_job_details(addr: address): (
         address,  // client
         address,  // freelancer
         u64,      // current_step
         u64,      // total_milestones
         bool,     // is_active
-        address   // platform_address
+        address,  // platform_address
+        address   // escrow_address
     ) acquires Job {
         // Verify Job exists
         assert!(exists<Job>(addr), error::not_found(ERROR_JOB_NOT_FOUND));
@@ -602,11 +599,13 @@ module escrow::escrow {
             job.current_step,
             job.total_milestones,
             job.is_active,
-            job.platform_address
+            job.platform_address,
+            job.escrow_address
         )
     }
     
     /// Get milestone details
+    #[view]
     public fun get_milestone_details(
         addr: address,
         milestone_index: u64
@@ -634,5 +633,16 @@ module escrow::escrow {
             milestone.status,
             milestone.submission_evidence
         )
+    }
+    
+    /// Get the balance of the escrowed funds
+    #[view]
+    public fun get_escrow_balance<CoinType>(addr: address): u64 acquires EscrowedFunds {
+        // Verify EscrowedFunds exists
+        assert!(exists<EscrowedFunds<CoinType>>(addr), error::not_found(ERROR_JOB_NOT_FOUND));
+        
+        // Get the balance
+        let funds = &borrow_global<EscrowedFunds<CoinType>>(addr).funds;
+        coin::value(funds)
     }
 }

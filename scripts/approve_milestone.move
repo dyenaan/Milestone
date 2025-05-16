@@ -1,7 +1,8 @@
 script {
     use escrow::escrow;
     
-    fun approve_milestone_main(sender: signer) {
-        escrow::approve_milestone(&sender);
+    // Need to specify the coin type
+    fun approve_milestone_main<CoinType>(sender: signer) {
+        escrow::approve_milestone<CoinType>(&sender);
     }
 }
