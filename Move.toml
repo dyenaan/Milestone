@@ -6,4 +6,4 @@ version = "1.0.0"
 AptosFramework = { local = "../aptos-core/aptos-move/framework/aptos-framework" }
 
 [addresses]
-escrow = "4821c48de763368f2e7aeef5cfe101c9215289401eef61eb0ae5e5c38f9f3034"
+escrow = "066f058a8662986ca69e272d91e4a119ff26adb7fe2eace3902a7769e8b396b2"

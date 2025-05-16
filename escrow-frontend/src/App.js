@@ -7,9 +7,12 @@ import JobDetails from './components/JobDetails';
 import SubmitWork from './components/SubmitWork';
 import ApproveMilestone from './components/ApproveMilestone';
 import DisputePanel from './components/DisputePanel';
+import PlatformDashboard from './components/PlatformDashboard';
+import ReviewerDashboard from './components/ReviewerDashboard';
 
-// Constants
-const MODULE_ADDRESS = '0x4821c48de763368f2e7aeef5cfe101c9215289401eef61eb0ae5e5c38f9f3034';
+
+// Constants - UPDATED WITH NEW CONTRACT ADDRESS
+const MODULE_ADDRESS = '0x066f058a8662986ca69e272d91e4a119ff26adb7fe2eace3902a7769e8b396b2';
 const ESCROW_MODULE = `${MODULE_ADDRESS}::escrow`;
 const NODE_URL = 'https://fullnode.testnet.aptoslabs.com/v1';
 
@@ -21,7 +24,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
-  const [userRole, setUserRole] = useState(null); // 'client', 'freelancer', or 'platform'
+  const [userRole, setUserRole] = useState(null); // 'client', 'freelancer', 'platform', or 'reviewer'
 
   // Initialize Aptos client
   useEffect(() => {
@@ -30,11 +33,11 @@ function App() {
   }, []);
 
   // Refresh jobs when switching to "jobs" tab
-useEffect(() => {
-  if (activeTab === 'jobs' && wallet) {
-    fetchJobs();
-  }
-}, [activeTab, wallet]);
+  useEffect(() => {
+    if (activeTab === 'jobs' && wallet) {
+      fetchJobs();
+    }
+  }, [activeTab, wallet]);
 
   // Determine user role when wallet changes
   useEffect(() => {
@@ -47,12 +50,16 @@ useEffect(() => {
     } else if (wallet.address === selectedJob.platform_address) {
       setUserRole('platform');
     } else {
-      setUserRole('reviewer'); // Default to reviewer if none of the above
+      // Check if user is a reviewer for any milestone
+      const isReviewer = selectedJob.milestones.some(
+        milestone => milestone.reviewers && milestone.reviewers.includes(wallet.address)
+      );
+      
+      setUserRole(isReviewer ? 'reviewer' : null);
     }
   }, [wallet, selectedJob]);
 
-  // Fetch jobs for the connected wallet
-  // In App.js, update the fetchJobs function
+  // Enhanced fetchJobs function with better reviewers handling
   const fetchJobs = async () => {
     if (!wallet || !client) return;
     
@@ -62,6 +69,9 @@ useEffect(() => {
     try {
       console.log("Fetching jobs for address:", wallet.address);
       const jobsFound = [];
+      
+      // For platform user, we want to fetch all jobs to see disputes
+      const isPlatform = wallet.address === '0x719cfc881c125386b260d97a5adf36d5653d96b2e733b88fbbedcf428f8bfbed';
       
       // 1. Try to find jobs created by this account (client role)
       try {
@@ -74,6 +84,23 @@ useEffect(() => {
         console.log("Job details from blockchain (as client):", jobDetails);
         
         if (jobDetails && jobDetails.data) {
+          // Get the min votes required
+          let minVotesRequired = 3; // Default
+          try {
+            const votesResult = await client.view({
+              function: `${MODULE_ADDRESS}::escrow::get_min_votes_required`,
+              type_arguments: [],
+              arguments: [wallet.address]
+            });
+            
+            if (votesResult && votesResult.length > 0) {
+              minVotesRequired = parseInt(votesResult[0]);
+              console.log("Min votes required:", minVotesRequired);
+            }
+          } catch (votesErr) {
+            console.log("Error fetching min votes required:", votesErr);
+          }
+          
           // Convert the raw blockchain data to our job format
           const job = {
             client: jobDetails.data.client,
@@ -83,18 +110,63 @@ useEffect(() => {
             is_active: jobDetails.data.is_active,
             platform_address: jobDetails.data.platform_address,
             escrow_address: jobDetails.data.escrow_address,
+            min_votes_required: minVotesRequired,
             milestones: []
           };
           
           // Process milestones if available
           if (jobDetails.data.milestones && Array.isArray(jobDetails.data.milestones)) {
-            job.milestones = jobDetails.data.milestones.map(m => ({
-              description: m.description,
-              amount: parseInt(m.amount),
-              status: parseInt(m.status),
-              submission_evidence: m.submission_evidence,
-              reviewers: m.reviewers || [],
-              votes: m.votes || []
+            job.milestones = await Promise.all(jobDetails.data.milestones.map(async (m, index) => {
+              // For each milestone, fetch reviewers if in dispute
+              let reviewers = m.reviewers || [];
+              let votes = m.votes || [];
+              
+              if (parseInt(m.status) === 4) { // IN_DISPUTE
+                try {
+                  // Try to fetch reviewers directly
+                  const reviewersResult = await client.view({
+                    function: `${MODULE_ADDRESS}::escrow::get_milestone_reviewers`,
+                    type_arguments: [],
+                    arguments: [job.client, index.toString()]
+                  });
+                  
+                  if (reviewersResult && Array.isArray(reviewersResult[0])) {
+                    reviewers = reviewersResult[0];
+                    console.log(`Fetched reviewers for milestone ${index}:`, reviewers);
+                  }
+                  
+                  // Try to fetch votes if any
+                  try {
+                    const votesResult = await client.view({
+                      function: `${MODULE_ADDRESS}::escrow::get_milestone_votes`,
+                      type_arguments: [],
+                      arguments: [job.client, index.toString()]
+                    });
+                    
+                    if (votesResult && Array.isArray(votesResult[0])) {
+                      const fetchedVotes = votesResult[0].map((voter, idx) => ({
+                        reviewer: voter,
+                        vote: parseInt(votesResult[1][idx])
+                      }));
+                      votes = fetchedVotes;
+                      console.log(`Fetched votes for milestone ${index}:`, votes);
+                    }
+                  } catch (votesErr) {
+                    console.log(`Error fetching votes for milestone ${index}:`, votesErr);
+                  }
+                } catch (reviewersErr) {
+                  console.log(`Error fetching reviewers for milestone ${index}:`, reviewersErr);
+                }
+              }
+              
+              return {
+                description: m.description,
+                amount: parseInt(m.amount),
+                status: parseInt(m.status),
+                submission_evidence: m.submission_evidence,
+                reviewers: reviewers,
+                votes: votes
+              };
             }));
           }
           
@@ -105,51 +177,49 @@ useEffect(() => {
         console.log("No jobs found where account is the client");
       }
       
-      // 2. If account is a freelancer, search for jobs by querying all accounts
-      // This is a simplified approach - in a real app, you'd need a more efficient solution
+      // 2. If account is a freelancer, platform, or potential reviewer, search for jobs
       try {
-        console.log("Checking for jobs where account is the freelancer...");
-        
-        // Try to use view functions to find jobs where this account is the freelancer
-        try {
-          const viewResponse = await client.view({
-            function: `${MODULE_ADDRESS}::escrow::get_job_details`,
-            type_arguments: [],
-            arguments: [wallet.address]
-          });
+        if (isPlatform || wallet.address !== jobsFound[0]?.client) {
+          console.log("Checking for jobs where account is the freelancer, platform or reviewer...");
           
-          // If we get here, the account has a job resource, which was handled in the client section
-        } catch (e) {
-          // No job resource found, this is expected if the user is only a freelancer
-        }
-        
-        // Since we can't directly query for all jobs assigned to a freelancer,
-        // we need to check known client addresses
-        // In a real app, you'd have a backend service or indexer to track this
-        
-        // Check the known client address (from our job details page)
-        // This is a workaround for the demo - a real app would need a better solution
-        const knownClientAddresses = [
-          "0x89a4067306d3453d00068fedb023b29fa834adfa8f7766b9530f14881b95030a"
-        ];
-        
-        for (const clientAddress of knownClientAddresses) {
-          try {
-            const viewResponse = await client.view({
-              function: `${MODULE_ADDRESS}::escrow::get_job_details`,
-              type_arguments: [],
-              arguments: [clientAddress]
-            });
-            
-            console.log("Job details from view function (checking client):", viewResponse);
-            
-            if (viewResponse && viewResponse.length >= 7) {
-              const jobClient = viewResponse[0];
-              const jobFreelancer = viewResponse[1];
+          // Check the known client addresses - in a real app, this would be from a backend service
+          const knownClientAddresses = [
+            "0x89a4067306d3453d00068fedb023b29fa834adfa8f7766b9530f14881b95030a"
+          ];
+          
+          for (const clientAddress of knownClientAddresses) {
+            try {
+              console.log(`Checking for jobs from client address: ${clientAddress}`);
               
-              // Check if this account is the freelancer for this job
-              if (jobFreelancer === wallet.address) {
-                console.log("Found job where account is the freelancer!");
+              const viewResponse = await client.view({
+                function: `${MODULE_ADDRESS}::escrow::get_job_details`,
+                type_arguments: [],
+                arguments: [clientAddress]
+              });
+              
+              console.log("Job details from view function (checking client):", viewResponse);
+              
+              if (viewResponse && viewResponse.length >= 7) {
+                const jobClient = viewResponse[0];
+                const jobFreelancer = viewResponse[1];
+                const platformAddress = viewResponse[5];
+                
+                // Get the min votes required
+                let minVotesRequired = 3; // Default
+                try {
+                  const votesResult = await client.view({
+                    function: `${MODULE_ADDRESS}::escrow::get_min_votes_required`,
+                    type_arguments: [],
+                    arguments: [clientAddress]
+                  });
+                  
+                  if (votesResult && votesResult.length > 0) {
+                    minVotesRequired = parseInt(votesResult[0]);
+                    console.log("Min votes required:", minVotesRequired);
+                  }
+                } catch (votesErr) {
+                  console.log("Error fetching min votes required:", votesErr);
+                }
                 
                 // Create a job object from the view function results
                 const job = {
@@ -158,12 +228,15 @@ useEffect(() => {
                   current_step: parseInt(viewResponse[2]),
                   total_milestones: parseInt(viewResponse[3]),
                   is_active: viewResponse[4],
-                  platform_address: viewResponse[5],
+                  platform_address: platformAddress,
                   escrow_address: viewResponse[6],
+                  min_votes_required: minVotesRequired,
                   milestones: []
                 };
                 
                 // Now fetch milestone details for each milestone
+                let isUserReviewer = false;
+                
                 for (let i = 0; i < job.total_milestones; i++) {
                   try {
                     const milestoneResult = await client.view({
@@ -173,30 +246,90 @@ useEffect(() => {
                     });
                     
                     if (milestoneResult && milestoneResult.length >= 4) {
-                      job.milestones.push({
+                      // Basic milestone info
+                      const milestone = {
                         description: milestoneResult[0],
                         amount: parseInt(milestoneResult[1]),
                         status: parseInt(milestoneResult[2]),
                         submission_evidence: milestoneResult[3],
                         reviewers: [],
                         votes: []
-                      });
+                      };
+                      
+                      // If milestone is in dispute, fetch reviewers and votes
+                      if (milestone.status === 4) { // IN_DISPUTE
+                        try {
+                          // Fetch reviewers
+                          const reviewersResult = await client.view({
+                            function: `${MODULE_ADDRESS}::escrow::get_milestone_reviewers`,
+                            type_arguments: [],
+                            arguments: [jobClient, i.toString()]
+                          });
+                          
+                          if (reviewersResult && Array.isArray(reviewersResult[0])) {
+                            milestone.reviewers = reviewersResult[0];
+                            console.log(`Fetched reviewers for milestone ${i}:`, milestone.reviewers);
+                            
+                            // Check if current user is a reviewer
+                           // Allow anyone to review for now since reviewer info can't be fetched
+const isReviewer = true;
+
+                          }
+                          
+                          // Fetch votes
+                          try {
+                            const votesResult = await client.view({
+                              function: `${MODULE_ADDRESS}::escrow::get_milestone_votes`,
+                              type_arguments: [],
+                              arguments: [jobClient, i.toString()]
+                            });
+                            
+                            if (votesResult && Array.isArray(votesResult[0])) {
+                              const fetchedVotes = votesResult[0].map((voter, idx) => ({
+                                reviewer: voter,
+                                vote: parseInt(votesResult[1][idx])
+                              }));
+                              milestone.votes = fetchedVotes;
+                              console.log(`Fetched votes for milestone ${i}:`, milestone.votes);
+                            }
+                          } catch (votesErr) {
+                            console.log(`Error fetching votes for milestone ${i}:`, votesErr);
+                          }
+                        } catch (reviewersErr) {
+                          console.log(`Error fetching reviewers for milestone ${i}:`, reviewersErr);
+                        }
+                      }
+                      
+                      job.milestones.push(milestone);
                     }
                   } catch (milestoneErr) {
                     console.error(`Error fetching milestone ${i}:`, milestoneErr);
                   }
                 }
                 
-                jobsFound.push(job);
-                console.log("Added job where account is freelancer:", job);
+                // Include the job if the user is freelancer, platform, or assigned as reviewer
+                const shouldInclude = true; // Show all jobs regardless of role
+
+                
+                if (shouldInclude) {
+                  // Only add the job if it's not already in the list (avoid duplicates)
+                  const isDuplicate = jobsFound.some(existingJob => 
+                    existingJob.client === job.client && existingJob.freelancer === job.freelancer
+                  );
+                  
+                  if (!isDuplicate) {
+                    jobsFound.push(job);
+                    console.log("Added job:", job);
+                  }
+                }
               }
+            } catch (clientViewErr) {
+              console.log(`No job found for client address ${clientAddress}`);
             }
-          } catch (clientViewErr) {
-            console.log(`No job found for client address ${clientAddress}`);
           }
         }
-      } catch (freelancerErr) {
-        console.log("Error checking for jobs where account is freelancer:", freelancerErr);
+      } catch (searchErr) {
+        console.log("Error checking for other jobs:", searchErr);
       }
       
       // Set the jobs found
@@ -215,17 +348,36 @@ useEffect(() => {
       setLoading(false);
     }
   };
+
   // Connect wallet using Petra, Martian, or other Aptos wallets
-  // In App.js
-const connectWallet = async () => {
-  try {
-    if (!window.aptos) {
-      throw new Error("Aptos wallet extension not found! Please install Petra, Martian, or another Aptos wallet.");
-    }
-    
-    // Check if wallet is already connected
+  const connectWallet = async () => {
     try {
-      // First check if we're already connected
+      if (!window.aptos) {
+        throw new Error("Aptos wallet extension not found! Please install Petra, Martian, or another Aptos wallet.");
+      }
+      
+      // Check if wallet is already connected
+      try {
+        // First check if we're already connected
+        const account = await window.aptos.account();
+        
+        setWallet({
+          address: account.address,
+          publicKey: account.publicKey,
+        });
+        
+        // Fetch jobs after connecting
+        await fetchJobs();
+        return;
+      } catch (e) {
+        // Not connected yet, proceed with connection
+        console.log("Not yet connected, attempting to connect...");
+      }
+      
+      // Connect wallet
+      await window.aptos.connect();
+      
+      // Get account info after connection
       const account = await window.aptos.account();
       
       setWallet({
@@ -235,30 +387,11 @@ const connectWallet = async () => {
       
       // Fetch jobs after connecting
       await fetchJobs();
-      return;
-    } catch (e) {
-      // Not connected yet, proceed with connection
-      console.log("Not yet connected, attempting to connect...");
+    } catch (err) {
+      setError(`Failed to connect wallet: ${err.message}`);
+      console.error("Wallet connection error:", err);
     }
-    
-    // Connect wallet
-    await window.aptos.connect();
-    
-    // Get account info after connection
-    const account = await window.aptos.account();
-    
-    setWallet({
-      address: account.address,
-      publicKey: account.publicKey,
-    });
-    
-    // Fetch jobs after connecting
-    await fetchJobs();
-  } catch (err) {
-    setError(`Failed to connect wallet: ${err.message}`);
-    console.error("Wallet connection error:", err);
-  }
-};
+  };
   
   const disconnectWallet = () => {
     if (window.aptos) {
@@ -308,6 +441,22 @@ const connectWallet = async () => {
               >
                 Create Job
               </button>
+              {wallet.address === '0x719cfc881c125386b260d97a5adf36d5653d96b2e733b88fbbedcf428f8bfbed' && (
+                <button 
+                  className={`px-4 py-2 ${activeTab === 'platform' ? 'border-b-2 border-blue-500 text-blue-500' : ''}`}
+                  onClick={() => setActiveTab('platform')}
+                >
+                  Platform Dashboard
+                </button>
+              )}
+              {/* Add a Reviews tab for reviewers */}
+              <button 
+  className={`px-4 py-2 ${activeTab === 'reviews' ? 'border-b-2 border-blue-500 text-blue-500' : ''}`}
+  onClick={() => setActiveTab('reviews')}
+>
+  My Reviews
+</button>
+
               {selectedJob && (
                 <button 
                   className={`px-4 py-2 ${activeTab === 'details' ? 'border-b-2 border-blue-500 text-blue-500' : ''}`}
@@ -336,6 +485,14 @@ const connectWallet = async () => {
                         <h3 className="font-bold">Job #{index + 1}</h3>
                         <p>Milestones: {job.current_step}/{job.total_milestones}</p>
                         <p>Status: {job.is_active ? 'Active' : 'Completed'}</p>
+                        {/* Show dispute indicator if any milestone is in dispute */}
+                        {job.milestones.some(m => m.status === 4) && (
+                          <p className="mt-2">
+                            <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium">
+                              Dispute in Progress
+                            </span>
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -351,6 +508,26 @@ const connectWallet = async () => {
                 onJobCreated={fetchJobs}
               />
             )}
+            
+            {activeTab === 'platform' && (
+  <PlatformDashboard
+    client={client}
+    wallet={wallet}
+    jobs={jobs}
+    moduleAddress={MODULE_ADDRESS}
+    userRole="platform"
+  />
+)}
+
+{activeTab === 'reviews' && (
+  <ReviewerDashboard
+    client={client}
+    wallet={wallet}
+    jobs={jobs}
+    moduleAddress={MODULE_ADDRESS}
+  />
+)}
+
             
             {activeTab === 'details' && selectedJob && (
               <div>
@@ -377,7 +554,7 @@ const connectWallet = async () => {
                   />
                 )}
                 
-                {(userRole === 'freelancer' || userRole === 'platform') && (
+                {(userRole === 'freelancer' || userRole === 'platform' || userRole === 'client') && (
                   <DisputePanel 
                     client={client}
                     wallet={wallet}

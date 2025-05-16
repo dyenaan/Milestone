@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
   const [reviewers, setReviewers] = useState(['', '', '', '', '']);
@@ -6,10 +6,56 @@ const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [currentReviewers, setCurrentReviewers] = useState([]);
+  const [currentVotes, setCurrentVotes] = useState([]);
   
   // Get the current milestone
   const currentMilestoneIndex = job.current_step;
   const currentMilestone = job.milestones[currentMilestoneIndex];
+  
+  // Fetch current reviewers and votes
+  useEffect(() => {
+    if (!currentMilestone) return;
+    
+    // If milestone is in dispute, get the most up-to-date reviewers and votes
+    if (currentMilestone.status === 4) {
+      const fetchReviewersAndVotes = async () => {
+        try {
+          // Fetch reviewers
+          const reviewersResult = await client.view({
+            function: `${moduleAddress}::escrow::get_milestone_reviewers`,
+            type_arguments: [],
+            arguments: [job.client, currentMilestoneIndex.toString()]
+          });
+          
+          if (reviewersResult && Array.isArray(reviewersResult[0])) {
+            setCurrentReviewers(reviewersResult[0]);
+            console.log(`Fetched reviewers for current milestone:`, reviewersResult[0]);
+          }
+          
+          // Fetch votes
+          const votesResult = await client.view({
+            function: `${moduleAddress}::escrow::get_milestone_votes`,
+            type_arguments: [],
+            arguments: [job.client, currentMilestoneIndex.toString()]
+          });
+          
+          if (votesResult && Array.isArray(votesResult[0])) {
+            const votes = votesResult[0].map((voter, idx) => ({
+              reviewer: voter,
+              vote: parseInt(votesResult[1][idx])
+            }));
+            setCurrentVotes(votes);
+            console.log(`Fetched votes for current milestone:`, votes);
+          }
+        } catch (err) {
+          console.error("Error fetching reviewers and votes:", err);
+        }
+      };
+      
+      fetchReviewersAndVotes();
+    }
+  }, [currentMilestone, job.client, currentMilestoneIndex, client, moduleAddress]);
   
   // Determine the dispute stage and user permissions
   const canStartDispute = 
@@ -23,14 +69,16 @@ const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
     currentMilestone && 
     currentMilestone.status === 4 && // IN_DISPUTE
     wallet.address === job.platform_address && 
-    (!currentMilestone.reviewers || currentMilestone.reviewers.length === 0);
+    (!currentReviewers || currentReviewers.length === 0);
   
   const canVote = 
     job.is_active && 
     currentMilestone && 
     currentMilestone.status === 4 && // IN_DISPUTE
-    currentMilestone.reviewers && 
-    currentMilestone.reviewers.includes(wallet.address);
+    currentReviewers && 
+    currentReviewers.includes(wallet.address) &&
+    // Check if this reviewer hasn't voted yet
+    !currentVotes.some(v => v.reviewer === wallet.address);
   
   const isInDispute = currentMilestone && currentMilestone.status === 4;
   
@@ -64,7 +112,7 @@ const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
       
       try {
         // Sign and submit transaction
-        const pendingTransaction = await window.aptos.signAndSubmitTransaction(payload);
+        const pendingTransaction = await window.aptos.signAndSubmitTransaction({ payload });
         console.log("Transaction submitted:", pendingTransaction);
         
         if (pendingTransaction && pendingTransaction.hash) {
@@ -129,7 +177,7 @@ const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
       
       try {
         // Sign and submit transaction
-        const pendingTransaction = await window.aptos.signAndSubmitTransaction(payload);
+        const pendingTransaction = await window.aptos.signAndSubmitTransaction({ payload });
         console.log("Transaction submitted:", pendingTransaction);
         
         if (pendingTransaction && pendingTransaction.hash) {
@@ -188,7 +236,7 @@ const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
       
       try {
         // Sign and submit transaction
-        const pendingTransaction = await window.aptos.signAndSubmitTransaction(payload);
+        const pendingTransaction = await window.aptos.signAndSubmitTransaction({ payload });
         console.log("Transaction submitted:", pendingTransaction);
         
         if (pendingTransaction && pendingTransaction.hash) {
@@ -220,6 +268,12 @@ const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Format address for display
+  const formatAddress = (address) => {
+    if (!address) return '';
+    return `${address.substring(0, 8)}...${address.substring(address.length - 8)}`;
   };
   
   // If not relevant, don't render the component
@@ -411,6 +465,40 @@ const DisputePanel = ({ client, wallet, job, moduleAddress, userRole }) => {
             This milestone is currently in dispute. Please wait for the reviewers to cast their votes.
             The outcome will be determined based on the majority vote.
           </p>
+          
+          {/* Display reviewers and voting status */}
+          {currentReviewers && currentReviewers.length > 0 && (
+            <div className="bg-gray-50 p-4 rounded-lg mb-4">
+              <h4 className="font-medium mb-2">Assigned Reviewers:</h4>
+              <div className="space-y-2">
+                {currentReviewers.map((reviewer, idx) => {
+                  const hasVoted = currentVotes.some(v => v.reviewer === reviewer);
+                  return (
+                    <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border">
+                      <span className="font-mono text-xs">{formatAddress(reviewer)}</span>
+                      {hasVoted ? (
+                        <span className="bg-green-100 text-green-800 text-xs py-1 px-2 rounded-full">Voted</span>
+                      ) : (
+                        <span className="bg-yellow-100 text-yellow-800 text-xs py-1 px-2 rounded-full">Pending</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="mt-4 bg-blue-50 p-3 rounded border border-blue-200">
+                <div className="flex justify-between">
+                  <span>Votes submitted:</span>
+                  <span className="font-medium">{currentVotes.length} / {currentReviewers.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Required for decision:</span>
+                  <span className="font-medium">{job.min_votes_required || 3}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="bg-gray-50 p-4 rounded-lg">
             <div className="font-medium mb-2">Dispute Process:</div>
             <ol className="list-decimal pl-5 space-y-1 text-sm text-gray-600">

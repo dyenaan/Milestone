@@ -321,44 +321,46 @@ module escrow::escrow {
         };
     }
     
-    /// Function for freelancer to initiate a dispute
-    public entry fun start_dispute(
-        account: &signer,
-        client: address,
-        milestone_index: u64
-    ) acquires Job, EscrowEvents {
-        let freelancer_addr = signer::address_of(account);
-        
-        // Get job from client's address
-        assert!(exists<Job>(client), error::not_found(ERROR_JOB_NOT_FOUND));
-        let job = borrow_global_mut<Job>(client);
-        
-        // Verify the sender is the freelancer
-        assert!(job.freelancer == freelancer_addr, error::permission_denied(ERROR_NOT_FREELANCER));
-        
-        // Verify milestone index is valid
-        assert!(milestone_index < vector::length(&job.milestones), error::invalid_argument(ERROR_INVALID_MILESTONE));
-        
-        // Get the milestone
-        let milestone = vector::borrow_mut(&mut job.milestones, milestone_index);
-        
-        // Verify milestone is in submitted state
-        assert!(milestone.status == STATUS_SUBMITTED, error::invalid_state(ERROR_INVALID_STATUS));
-        
-        // Update to in dispute status
-        milestone.status = STATUS_IN_DISPUTE;
-        
-        // Emit dispute started event
-        let events = borrow_global_mut<EscrowEvents>(client);
-        event::emit_event(
-            &mut events.dispute_started,
-            DisputeStartedEvent {
-                client,
-                freelancer: freelancer_addr,
-                milestone_index,
-            }
-        );
-    }
+    /// Function for client to initiate a dispute
+public entry fun start_dispute(
+    account: &signer,
+    freelancer: address,
+    milestone_index: u64
+) acquires Job, EscrowEvents {
+    let client_addr = signer::address_of(account);
+    
+    // Get job from client's address (signer)
+    assert!(exists<Job>(client_addr), error::not_found(ERROR_JOB_NOT_FOUND));
+    let job = borrow_global_mut<Job>(client_addr);
+    
+    // Verify the sender is the client (already assured by accessing client_addr)
+    
+    // Verify freelancer address matches the job
+    assert!(job.freelancer == freelancer, error::invalid_argument(ERROR_INVALID_MILESTONE));
+    
+    // Verify milestone index is valid
+    assert!(milestone_index < vector::length(&job.milestones), error::invalid_argument(ERROR_INVALID_MILESTONE));
+    
+    // Get the milestone
+    let milestone = vector::borrow_mut(&mut job.milestones, milestone_index);
+    
+    // Verify milestone is in submitted state
+    assert!(milestone.status == STATUS_SUBMITTED, error::invalid_state(ERROR_INVALID_STATUS));
+    
+    // Update to in dispute status
+    milestone.status = STATUS_IN_DISPUTE;
+    
+    // Emit dispute started event
+    let events = borrow_global_mut<EscrowEvents>(client_addr);
+    event::emit_event(
+        &mut events.dispute_started,
+        DisputeStartedEvent {
+            client: client_addr,
+            freelancer: job.freelancer,
+            milestone_index,
+        }
+    );
+}
     
     /// Function for platform to assign reviewers to a disputed milestone
     public entry fun assign_reviewers(

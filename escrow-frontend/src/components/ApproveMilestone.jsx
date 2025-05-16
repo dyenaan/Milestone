@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 
-const ApproveMilestone = ({ client, wallet, job, moduleAddress }) => {
+const ApproveMilestone = ({ client, wallet, job, moduleAddress, onStartDispute }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [disputeLoading, setDisputeLoading] = useState(false);
   
   // Get the current milestone
   const currentMilestoneIndex = job.current_step;
@@ -16,8 +17,7 @@ const ApproveMilestone = ({ client, wallet, job, moduleAddress }) => {
     currentMilestone.status === 1 && // SUBMITTED
     wallet.address === job.client;
   
-  // Helper function to convert hex to text (copied from JobDetails.jsx)
-  // Update the hexToString function in ApproveMilestone.jsx
+  // Helper function to convert hex to text
   const hexToString = (hex) => {
     if (!hex || hex === '0x') return '';
   
@@ -37,9 +37,64 @@ const ApproveMilestone = ({ client, wallet, job, moduleAddress }) => {
     }
   };
   
-
-const handleApprove = async () => {
-  setLoading(true);
+  const handleApprove = async () => {
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
+    
+    try {
+      if (!wallet || !client) {
+        throw new Error("Wallet not connected");
+      }
+      
+      // Construct the transaction payload - MODIFIED TO MATCH CONTRACT
+      const payload = {
+        function: `${moduleAddress}::escrow::approve_milestone`,
+        type_arguments: ["0x1::aptos_coin::AptosCoin"],
+        arguments: [] // The contract doesn't expect any arguments for approve_milestone
+      };
+      
+      console.log("Approving milestone with payload:", payload);
+      
+      try {
+        // Sign and submit transaction with the recommended format
+        const pendingTransaction = await window.aptos.signAndSubmitTransaction({ payload });
+        console.log("Transaction submitted:", pendingTransaction);
+        
+        if (pendingTransaction && pendingTransaction.hash) {
+          // Set success immediately after submission
+          setSuccess(true);
+          
+          // Attempt to wait for transaction but don't block the UI
+          try {
+            client.waitForTransaction(pendingTransaction.hash)
+              .then(() => {
+                console.log("Transaction confirmed");
+                // Refresh the page after confirmation
+                setTimeout(() => window.location.reload(), 2000);
+              })
+              .catch(confirmErr => console.warn("Warning: Could not confirm transaction:", confirmErr));
+          } catch (waitErr) {
+            console.warn("Warning: Could not confirm transaction:", waitErr);
+          }
+        } else {
+          throw new Error("Transaction did not return a hash");
+        }
+      } catch (txErr) {
+        console.error("Transaction error:", txErr);
+        throw new Error(`Transaction failed: ${txErr.message || "Unknown error"}`);
+      }
+    } catch (err) {
+      console.error("Approval error:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Function to handle starting a dispute
+const handleStartDispute = async () => {
+  setDisputeLoading(true);
   setError(null);
   setSuccess(false);
   
@@ -48,51 +103,74 @@ const handleApprove = async () => {
       throw new Error("Wallet not connected");
     }
     
-    // Construct the transaction payload - MODIFIED TO MATCH CONTRACT
+    // Client address check
+    console.log("Client address check:", {
+      fromJob: job.client,
+      fromWallet: wallet.address
+    });
+    
+    // Log details for troubleshooting
+    console.log("Job details for dispute:", {
+      client: job.client,
+      freelancer: job.freelancer,
+      milestoneIndex: currentMilestoneIndex,
+      totalMilestones: job.total_milestones,
+      moduleAddress
+    });
+    
+    // Construct the transaction payload according to our updated contract
     const payload = {
-      function: `${moduleAddress}::escrow::approve_milestone`,
-      type_arguments: ["0x1::aptos_coin::AptosCoin"],
-      arguments: [] // Remove arguments as the contract doesn't expect any
+      function: `${moduleAddress}::escrow::start_dispute`,
+      type_arguments: [],
+      arguments: [
+        job.freelancer,
+        currentMilestoneIndex.toString()
+      ]
     };
     
-    console.log("Approving milestone with payload:", payload);
-    
-    try {
-      // Sign and submit transaction
-      const pendingTransaction = await window.aptos.signAndSubmitTransaction(payload);
-      console.log("Transaction submitted:", pendingTransaction);
+    console.log("Starting dispute with payload:", payload);
       
-      if (pendingTransaction && pendingTransaction.hash) {
-        // Set success immediately after submission
-        setSuccess(true);
+      try {
+        // Sign and submit transaction with the recommended format
+        const pendingTransaction = await window.aptos.signAndSubmitTransaction({ payload });
+        console.log("Transaction submitted:", pendingTransaction);
         
-        // Attempt to wait for transaction but don't block the UI
-        try {
-          client.waitForTransaction(pendingTransaction.hash)
-            .then(() => {
-              console.log("Transaction confirmed");
-              // Refresh the page after confirmation
-              setTimeout(() => window.location.reload(), 2000);
-            })
-            .catch(confirmErr => console.warn("Warning: Could not confirm transaction:", confirmErr));
-        } catch (waitErr) {
-          console.warn("Warning: Could not confirm transaction:", waitErr);
+        if (pendingTransaction && pendingTransaction.hash) {
+          // Set success immediately after submission
+          setSuccess(true);
+          
+          // Call the onStartDispute callback if provided
+          if (onStartDispute) {
+            onStartDispute();
+          }
+          
+          // Attempt to wait for transaction but don't block the UI
+          try {
+            client.waitForTransaction(pendingTransaction.hash)
+              .then(() => {
+                console.log("Transaction confirmed");
+                // Refresh the page after confirmation
+                setTimeout(() => window.location.reload(), 2000);
+              })
+              .catch(confirmErr => console.warn("Warning: Could not confirm transaction:", confirmErr));
+          } catch (waitErr) {
+            console.warn("Warning: Could not confirm transaction:", waitErr);
+          }
+        } else {
+          throw new Error("Transaction did not return a hash");
         }
-      } else {
-        throw new Error("Transaction did not return a hash");
+      } catch (txErr) {
+        console.error("Transaction error:", txErr);
+        throw new Error(`Transaction failed: ${txErr.message || "Unknown error"}`);
       }
-    } catch (txErr) {
-      console.error("Transaction error:", txErr);
-      throw new Error(`Transaction failed: ${txErr.message || "Unknown error"}`);
+    } catch (err) {
+      console.error("Dispute error:", err);
+      setError(err.message);
+    } finally {
+      setDisputeLoading(false);
     }
-  } catch (err) {
-    console.error("Approval error:", err);
-    setError(err.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
+  };
+  
   // If client can't approve work, don't render the component
   if (!canApprove) return null;
   
@@ -108,7 +186,7 @@ const handleApprove = async () => {
       
       {success && (
         <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-          Milestone approved successfully! The page will refresh shortly.
+          Action completed successfully! The page will refresh shortly.
         </div>
       )}
       
@@ -188,15 +266,28 @@ const handleApprove = async () => {
         
         <button
           type="button"
-          onClick={() => {/* Start dispute function would go here */}}
-          className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded transition"
+          onClick={handleStartDispute}
+          className={`bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded transition ${
+            disputeLoading ? "opacity-50 cursor-not-allowed" : ""
+          }`}
+          disabled={disputeLoading}
         >
-          <span className="flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            Start Dispute
-          </span>
+          {disputeLoading ? (
+            <span className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Starting Dispute...
+            </span>
+          ) : (
+            <span className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Start Dispute
+            </span>
+          )}
         </button>
       </div>
     </div>
