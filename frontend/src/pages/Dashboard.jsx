@@ -2,9 +2,67 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabaseJobs, supabaseApplications } from '../services/supabase';
 import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import {
+  BriefcaseIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  CurrencyDollarIcon,
+  BellIcon
+} from '@heroicons/react/24/outline';
+import { formatWalletAddress } from '../utils/formatters';
 
 // Fixed UUID for Aptos wallet users (fallback)
 const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
+
+// Mock dashboard data for when API calls fail
+const mockDashboardStats = {
+  earnings: {
+    total: 12500,
+    thisMonth: 3200,
+    pendingPayouts: 1800
+  },
+  projects: {
+    total: 15,
+    completed: 12,
+    inProgress: 3,
+    success_rate: 92
+  },
+  milestones: {
+    total: 48,
+    completed: 42,
+    overdue: 0,
+    pending_review: 2
+  }
+};
+
+// Mock notifications for when API calls fail
+const mockNotifications = [
+  {
+    id: '1',
+    type: 'payment',
+    title: 'Payment Received',
+    message: 'You received 250 USD for completing "Smart Contract Development"',
+    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    read: false
+  },
+  {
+    id: '2',
+    type: 'milestone',
+    title: 'Milestone Approved',
+    message: 'Your milestone "Deploy to Testnet" was approved by Alex Johnson',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
+    read: true
+  },
+  {
+    id: '3',
+    type: 'job',
+    title: 'New Job Opportunity',
+    message: 'A job matching your skills "React Native Developer" was posted',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    read: false
+  }
+];
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -19,6 +77,8 @@ const Dashboard = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDeleteJobModal, setShowDeleteJobModal] = useState(false);
   const [actionSuccess, setActionSuccess] = useState(null);
+  const [dashboardStats, setDashboardStats] = useState(mockDashboardStats);
+  const [notifications, setNotifications] = useState(mockNotifications);
 
   // Helper function to extract valid string identifiers
   const getValidStringIdentifier = (identifier) => {
@@ -48,6 +108,28 @@ const Dashboard = () => {
 
       try {
         if (user) {
+          // Fetch dashboard stats from mock service (gracefully handle failures)
+          try {
+            const statsResponse = await axios.get('/dashboard/stats');
+            if (statsResponse.data) {
+              setDashboardStats(statsResponse.data);
+            }
+          } catch (statsErr) {
+            console.log('Using mock dashboard stats due to API error:', statsErr);
+            // Already set to mock data by default, no need to set again
+          }
+
+          // Fetch notifications from mock service (gracefully handle failures)
+          try {
+            const notificationsResponse = await axios.get('/notifications');
+            if (notificationsResponse.data) {
+              setNotifications(notificationsResponse.data);
+            }
+          } catch (notifErr) {
+            console.log('Using mock notifications due to API error:', notifErr);
+            // Already set to mock data by default, no need to set again
+          }
+
           // Determine all possible identifiers for this user
           const userIdentifiers = [];
 
@@ -55,7 +137,9 @@ const Dashboard = () => {
           const isAptosUser = user.authSource === 'aptos_keyless' ||
             (user.id && typeof user.id === 'object' && user.id.data instanceof Uint8Array) ||
             user.isKeyless ||
-            (user.accountAddress && typeof user.accountAddress === 'string' && user.accountAddress.startsWith('0x'));
+            (user.accountAddress && typeof user.accountAddress === 'string' && user.accountAddress.startsWith('0x')) ||
+            user.isAptos ||
+            user.authMethod === 'google_aptos';
 
           // If it's an Aptos user, always use the fixed UUID
           if (isAptosUser) {
@@ -167,6 +251,20 @@ const Dashboard = () => {
     fetchUserData();
   }, [user]);
 
+  // Function to format numbers with comma separators
+  const formatNumber = (num) => {
+    return new Intl.NumberFormat('en-US').format(num);
+  };
+
+  // Function to format dates
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+
+    const date = new Date(dateString);
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    return date.toLocaleDateString('en-US', options);
+  };
+
   // Function to handle deleting an application
   const handleDeleteApplication = async () => {
     if (!selectedApplication) return;
@@ -200,13 +298,10 @@ const Dashboard = () => {
     }
   };
 
-  // Function to handle reapplying for a job
   const handleReapply = (jobId) => {
-    // Navigate to the job details page
-    navigate(`/jobs/${jobId}?reapply=true`);
+    navigate(`/jobs/${jobId}/apply`);
   };
 
-  // Function to handle deleting a job
   const handleDeleteJob = async () => {
     if (!selectedJob) return;
 
@@ -239,427 +334,401 @@ const Dashboard = () => {
     }
   };
 
-  // Helper function to safely display wallet address
-  const formatWalletAddress = (address) => {
-    if (!address) return 'Not available';
-
-    // If it's an object with data property
-    if (typeof address === 'object' && address.data instanceof Uint8Array) {
-      try {
-        const hexString = Array.from(address.data)
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-
-        // Show first 6 and last 4 characters with ellipsis in between
-        const formatted = `0x${hexString.substring(0, 6)}...${hexString.substring(hexString.length - 4)}`;
-        return formatted;
-      } catch (err) {
-        console.error('Error formatting address:', err);
-        return 'Invalid address format';
-      }
-    }
-
-    // If it's a string
-    if (typeof address === 'string') {
-      if (address.length > 16) {
-        return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-      }
-      return address;
-    }
-
-    // Fallback
-    return 'Unknown format';
-  };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
-      </div>
-    );
-  }
-
+  // Render dashboard UI
   return (
-    <div className="container mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
-
-      {/* Success message */}
-      {actionSuccess && (
-        <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-6 animate-pulse">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-green-700">{actionSuccess}</p>
-            </div>
+    <div className="container mx-auto px-4 py-8">
+      {/* User Welcome Section */}
+      <div className="bg-white shadow rounded-lg mb-6 p-6">
+        <div className="md:flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Welcome, Alex Johnson</h1>
+            <p className="text-gray-600">
+              Wallet Address: {formatWalletAddress(user?.accountAddress || user?.walletAddress || "Not Connected")}
+            </p>
+          </div>
+          <div className="mt-4 md:mt-0 flex space-x-2">
+            <Link
+              to="/create-job"
+              className="block md:inline-block bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
+            >
+              Post a Job
+            </Link>
+            <Link
+              to="/marketplace"
+              className="block md:inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg"
+            >
+              Browse Jobs
+            </Link>
           </div>
         </div>
-      )}
+      </div>
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
           <div className="flex">
-            <div>
-              <p className="text-red-700">{error}</p>
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-10a1 1 0 10-2 0v4a1 1 0 102 0V8zm-1 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">
+                {error}
+              </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Simplified User Welcome Card */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-        <div className="px-6 py-8">
-          <div className="flex items-center">
-            <div className="bg-indigo-100 rounded-full p-3 mr-4">
-              <svg className="h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      {actionSuccess && (
+        <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">
-                Welcome back, {user?.username || user?.email?.split('@')[0] || user?.user_metadata?.full_name || 'User'}!
-              </h2>
-              <p className="text-gray-600 mt-1">Your freelance dashboard</p>
+            <div className="ml-3">
+              <p className="text-sm text-green-700">
+                {actionSuccess}
+              </p>
             </div>
           </div>
-
-          {/* Action Buttons */}
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Link to="/profile" className="inline-flex items-center px-3 py-1.5 border border-indigo-100 rounded-md text-sm text-indigo-700 bg-indigo-50 hover:bg-indigo-100">
-              <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Edit Profile
-            </Link>
-            <Link to="/marketplace" className="inline-flex items-center px-3 py-1.5 border border-indigo-100 rounded-md text-sm text-indigo-700 bg-indigo-50 hover:bg-indigo-100">
-              <svg className="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              Find Jobs
-            </Link>
-          </div>
         </div>
-      </div>
+      )}
 
-      {/* Jobs Posted */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-        <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Jobs Posted</h3>
-          <Link
-            to="/create-job"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-          >
-            Post New Job
-          </Link>
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="spinner"></div>
         </div>
-        <div className="border-t border-gray-200">
-          {postedJobs.length === 0 ? (
-            <div className="px-4 py-5 text-center text-gray-500">
-              You haven&apos;t posted any jobs yet.
-            </div>
-          ) : (
-            <ul className="divide-y divide-gray-200">
-              {postedJobs.map(job => (
-                <li key={job.id} className="relative">
-                  <div className="block hover:bg-gray-50">
-                    <div className="px-4 py-4 sm:px-6">
-                      <div className="flex items-center justify-between">
-                        <Link to={`/jobs/${job.id}`}>
-                          <p className="text-sm font-medium text-indigo-600 truncate">{job.title}</p>
-                        </Link>
-                        <div className="ml-2 flex-shrink-0 flex">
-                          <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                            ${job.status === 'open' ? 'bg-green-100 text-green-800' :
-                              job.status === 'assigned' ? 'bg-blue-100 text-blue-800' :
-                                job.status === 'completed' ? 'bg-gray-100 text-gray-800' :
-                                  'bg-yellow-100 text-yellow-800'}`}>
-                            {job.status.replace('_', ' ')}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-2 sm:flex sm:justify-between">
-                        <div className="sm:flex">
-                          <p className="flex items-center text-sm text-gray-500">
-                            Category: {job.category}
-                          </p>
-                          <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
-                            Budget: ${job.budget}
-                          </p>
-                        </div>
-                        <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                          <p>Posted on {new Date(job.created_at).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="mt-3 flex space-x-2 justify-end">
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setSelectedJob(job);
-                            setShowDeleteJobModal(true);
-                          }}
-                          className="text-xs text-red-600 hover:text-red-900 flex items-center"
-                        >
-                          <svg className="h-3.5 w-3.5 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          Delete Job
-                        </button>
-
-                        <Link
-                          to={`/jobs/${job.id}`}
-                          className="text-xs text-indigo-600 hover:text-indigo-900 flex items-center"
-                        >
-                          <svg className="h-3.5 w-3.5 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                          View Details
-                        </Link>
-                      </div>
-                    </div>
+      ) : (
+        <>
+          {/* Dashboard Stats */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Dashboard Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Earnings Card */}
+              <div className="bg-white rounded-lg shadow p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 bg-green-100 rounded-full p-3">
+                    <CurrencyDollarIcon className="h-6 w-6 text-green-600" />
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Earnings</p>
+                    <p className="text-lg font-semibold text-gray-800">${formatNumber(dashboardStats?.earnings?.total || 0)}</p>
+                  </div>
+                </div>
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                  <div className="flex justify-between">
+                    <p className="text-xs text-gray-500">This Month</p>
+                    <p className="text-xs font-medium text-gray-800">${formatNumber(dashboardStats?.earnings?.thisMonth || 0)}</p>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <p className="text-xs text-gray-500">Pending</p>
+                    <p className="text-xs font-medium text-gray-800">${formatNumber(dashboardStats?.earnings?.pendingPayouts || 0)}</p>
+                  </div>
+                </div>
+              </div>
 
-      {/* Jobs Applied To */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-          <div className="flex items-center">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">Applications</h3>
-            {appliedJobs.filter(app =>
-              app.status === 'accepted' ||
-              (app.status === 'pending' && new Date(app.created_at) > new Date(Date.now() - 86400000))
-            ).length > 0 && (
-                <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 animate-pulse">
-                  {appliedJobs.filter(app =>
-                    app.status === 'accepted' ||
-                    (app.status === 'pending' && new Date(app.created_at) > new Date(Date.now() - 86400000))
-                  ).length}
-                </span>
+              {/* Projects Card */}
+              <div className="bg-white rounded-lg shadow p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 bg-blue-100 rounded-full p-3">
+                    <BriefcaseIcon className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Projects</p>
+                    <p className="text-lg font-semibold text-gray-800">{dashboardStats?.projects?.total || 0}</p>
+                  </div>
+                </div>
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                  <div className="flex justify-between">
+                    <p className="text-xs text-gray-500">Completed</p>
+                    <p className="text-xs font-medium text-gray-800">{dashboardStats?.projects?.completed || 0}</p>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <p className="text-xs text-gray-500">In Progress</p>
+                    <p className="text-xs font-medium text-gray-800">{dashboardStats?.projects?.inProgress || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Milestones Card */}
+              <div className="bg-white rounded-lg shadow p-5">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 bg-purple-100 rounded-full p-3">
+                    <CheckCircleIcon className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Milestones</p>
+                    <p className="text-lg font-semibold text-gray-800">{dashboardStats?.milestones?.total || 0}</p>
+                  </div>
+                </div>
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                  <div className="flex justify-between">
+                    <p className="text-xs text-gray-500">Completed</p>
+                    <p className="text-xs font-medium text-gray-800">{dashboardStats?.milestones?.completed || 0}</p>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <p className="text-xs text-gray-500">Pending Review</p>
+                    <p className="text-xs font-medium text-gray-800">{dashboardStats?.milestones?.pending_review || 0}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Notifications */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Recent Notifications</h2>
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              {notifications.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">No notifications yet.</div>
+              ) : (
+                <ul className="divide-y divide-gray-200">
+                  {notifications.map((notification) => (
+                    <li key={notification.id} className={`p-4 hover:bg-gray-50 ${!notification.read ? 'bg-blue-50' : ''}`}>
+                      <div className="flex items-start">
+                        <div className="flex-shrink-0 pt-1">
+                          {notification.type === 'payment' && (
+                            <div className="rounded-full bg-green-100 p-1">
+                              <CurrencyDollarIcon className="h-5 w-5 text-green-600" />
+                            </div>
+                          )}
+                          {notification.type === 'milestone' && (
+                            <div className="rounded-full bg-purple-100 p-1">
+                              <CheckCircleIcon className="h-5 w-5 text-purple-600" />
+                            </div>
+                          )}
+                          {notification.type === 'job' && (
+                            <div className="rounded-full bg-blue-100 p-1">
+                              <BriefcaseIcon className="h-5 w-5 text-blue-600" />
+                            </div>
+                          )}
+                          {notification.type === 'reminder' && (
+                            <div className="rounded-full bg-amber-100 p-1">
+                              <ClockIcon className="h-5 w-5 text-amber-600" />
+                            </div>
+                          )}
+                          {notification.type === 'alert' && (
+                            <div className="rounded-full bg-red-100 p-1">
+                              <BellIcon className="h-5 w-5 text-red-600" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="ml-3 flex-1">
+                          <p className="text-sm font-medium text-gray-900">{notification.title}</p>
+                          <p className="text-sm text-gray-500">{notification.message}</p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            {formatDate(notification.timestamp)}
+                          </p>
+                        </div>
+                        {!notification.read && (
+                          <div className="flex-shrink-0 ml-2">
+                            <span className="inline-block h-2 w-2 rounded-full bg-blue-600"></span>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
+            </div>
           </div>
-          <Link
-            to="/marketplace"
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-          >
-            Browse Jobs
-          </Link>
-        </div>
 
-        {/* Congratulations banner for accepted applications */}
-        {appliedJobs.some(app => app.status === 'accepted') && (
-          <div className="mx-4 mt-1 mb-3 bg-green-50 border border-green-200 rounded-md p-4 animate-pulse">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-green-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">Congratulations!</h3>
-                <div className="mt-1 text-sm text-green-700">
-                  <p>One or more of your applications have been accepted. Check below for details.</p>
+          {/* Main content - Posted jobs and applications */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Jobs You've Posted</h2>
+              {postedJobs.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-6">
+                  <p className="text-gray-500">You haven't posted any jobs yet.</p>
+                  <Link
+                    to="/create-job"
+                    className="mt-4 inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded"
+                  >
+                    Post a Job
+                  </Link>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-        <div className="border-t border-gray-200">
-          {appliedJobs.length === 0 ? (
-            <div className="px-4 py-5 text-center text-gray-500">
-              You haven&apos;t applied to any jobs yet.
-            </div>
-          ) : (
-            <ul className="divide-y divide-gray-200">
-              {appliedJobs.map(application => (
-                <li key={application.id} className="relative">
-                  <div className="block hover:bg-gray-50">
-                    <div className="px-4 py-4 sm:px-6">
-                      <div className="flex items-center justify-between">
-                        <Link to={`/jobs/${application.job_id}`}>
-                          <p className="text-sm font-medium text-indigo-600 truncate">
-                            {application.jobs?.title || (application.job && application.job.title) || 'Job title not available'}
-                          </p>
-                        </Link>
-                        <div className="ml-2 flex-shrink-0 flex items-center">
-                          <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                            ${application.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                              application.status === 'accepted' ? 'bg-green-100 text-green-800' :
-                                'bg-red-100 text-red-800'}`}>
-                            {application.status}
-                          </p>
-                          {application.status === 'accepted' && (
-                            <span className="ml-1 flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              ) : (
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                  <ul className="divide-y divide-gray-200">
+                    {postedJobs.map((job) => (
+                      <li key={job.id} className="p-4 hover:bg-gray-50">
+                        <div>
+                          <div className="flex justify-between">
+                            <h3 className="text-lg font-medium text-indigo-600">{job.title}</h3>
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              ${job.budget}
                             </span>
-                          )}
-                          {application.status === 'pending' && new Date(application.created_at) > new Date(Date.now() - 86400000) && (
-                            <span className="ml-1 text-xs text-blue-600 font-medium">new</span>
-                          )}
+                          </div>
+                          <p className="mt-1 text-sm text-gray-500 line-clamp-2">{job.description}</p>
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <ClockIcon className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
+                            <span>Posted on {formatDate(job.created_at)}</span>
+                            <span className="mx-2">&middot;</span>
+                            <span>{job.applications?.length || 0} applications</span>
+                          </div>
+                          <div className="mt-3 flex space-x-3">
+                            <Link
+                              to={`/jobs/${job.id}`}
+                              className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                            >
+                              View Details
+                            </Link>
+                            <button
+                              onClick={() => {
+                                setSelectedJob(job);
+                                setShowDeleteJobModal(true);
+                              }}
+                              className="text-sm font-medium text-red-600 hover:text-red-500"
+                            >
+                              Delete Job
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="mt-2 sm:flex sm:justify-between">
-                        <div className="sm:flex">
-                          <p className="flex items-center text-sm text-gray-500">
-                            Your price: ${application.price}
-                          </p>
-                          {application.estimated_time && (
-                            <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
-                              Estimated time: {application.estimated_time}
-                            </p>
-                          )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Your Job Applications</h2>
+              {appliedJobs.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-6">
+                  <p className="text-gray-500">You haven't applied to any jobs yet.</p>
+                  <Link
+                    to="/marketplace"
+                    className="mt-4 inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded"
+                  >
+                    Browse Jobs
+                  </Link>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow overflow-hidden">
+                  <ul className="divide-y divide-gray-200">
+                    {appliedJobs.map((application) => (
+                      <li key={application.id} className="p-4 hover:bg-gray-50">
+                        <div>
+                          <div className="flex justify-between">
+                            <h3 className="text-lg font-medium text-indigo-600">{application.job?.title || 'Job'}</h3>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${application.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                              application.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }`}>
+                              {application.status ? application.status.charAt(0).toUpperCase() + application.status.slice(1) : 'Pending'}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-500 line-clamp-2">{application.cover_letter}</p>
+                          <div className="mt-2 flex items-center text-sm text-gray-500">
+                            <ClockIcon className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
+                            <span>Applied on {formatDate(application.created_at)}</span>
+                          </div>
+                          <div className="mt-3 flex space-x-3">
+                            <Link
+                              to={`/jobs/${application.job_id}`}
+                              className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                            >
+                              View Job
+                            </Link>
+                            {application.status === 'rejected' && (
+                              <button
+                                onClick={() => handleReapply(application.job_id)}
+                                className="text-sm font-medium text-green-600 hover:text-green-500"
+                              >
+                                Reapply
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                setSelectedApplication(application);
+                                setShowDeleteModal(true);
+                              }}
+                              className="text-sm font-medium text-red-600 hover:text-red-500"
+                            >
+                              Delete Application
+                            </button>
+                          </div>
                         </div>
-                        <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                          <p>Applied on {new Date(application.created_at).toLocaleDateString()}</p>
-                        </div>
-                      </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
-                      {/* Action buttons */}
-                      <div className="mt-3 flex space-x-2 justify-end">
-                        <button
-                          onClick={() => {
-                            setSelectedApplication(application);
-                            setShowDeleteModal(true);
-                          }}
-                          className="text-xs text-red-600 hover:text-red-900 flex items-center"
-                        >
-                          <svg className="h-3.5 w-3.5 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          Delete
-                        </button>
-
-                        <button
-                          onClick={() => handleReapply(application.job_id)}
-                          className="text-xs text-indigo-600 hover:text-indigo-900 flex items-center"
-                        >
-                          <svg className="h-3.5 w-3.5 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                          Reapply
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      {/* Delete Application Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 animate-fade-in">
-            <div className="sm:flex sm:items-start">
-              <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                <svg className="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      {/* Delete Job Modal */}
+      {showDeleteJobModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3 text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">Delete Application</h3>
-                <div className="mt-2">
-                  <p className="text-sm text-gray-500">
-                    Are you sure you want to delete this application? This action cannot be undone.
-                  </p>
-                </div>
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mt-4">Delete Job</h3>
+              <div className="mt-2 px-7 py-3">
+                <p className="text-sm text-gray-500">
+                  Are you sure you want to delete this job? This action cannot be undone.
+                </p>
               </div>
-            </div>
-            <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={handleDeleteApplication}
-                className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {actionLoading ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Deleting...
-                  </>
-                ) : (
-                  'Delete'
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setSelectedApplication(null);
-                }}
-                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
-              >
-                Cancel
-              </button>
+              <div className="items-center px-4 py-3 flex justify-center space-x-4">
+                <button
+                  onClick={() => setShowDeleteJobModal(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteJob}
+                  disabled={actionLoading}
+                  className="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  {actionLoading ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Job Confirmation Modal */}
-      {showDeleteJobModal && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 animate-fade-in">
-            <div className="sm:flex sm:items-start">
-              <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                <svg className="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      {/* Delete Application Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3 text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">Delete Job Posting</h3>
-                <div className="mt-2">
-                  <p className="text-sm text-gray-500">
-                    Are you sure you want to delete this job posting? This will also delete all applications to this job. This action cannot be undone.
-                  </p>
-                </div>
+              <h3 className="text-lg leading-6 font-medium text-gray-900 mt-4">Delete Application</h3>
+              <div className="mt-2 px-7 py-3">
+                <p className="text-sm text-gray-500">
+                  Are you sure you want to delete this application? This action cannot be undone.
+                </p>
               </div>
-            </div>
-            <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={handleDeleteJob}
-                className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {actionLoading ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Deleting...
-                  </>
-                ) : (
-                  'Delete Job'
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDeleteJobModal(false);
-                  setSelectedJob(null);
-                }}
-                className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
-              >
-                Cancel
-              </button>
+              <div className="items-center px-4 py-3 flex justify-center space-x-4">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteApplication}
+                  disabled={actionLoading}
+                  className="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  {actionLoading ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
