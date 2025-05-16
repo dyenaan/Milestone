@@ -14,25 +14,29 @@ import SystemStatus from './pages/SystemStatus';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AptosLogin from './components/AptosLogin';
 import NetworkErrorHandler from './components/NetworkErrorHandler';
+import BlockchainJobForm from './components/BlockchainJobForm';
+import WalletConnector from './components/WalletConnector';
 
 // Protected route component
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { user, loading } = useAuth();
   const [redirecting, setRedirecting] = useState(false);
 
   // Add more thorough authentication check
   useEffect(() => {
     const checkAuthStatus = async () => {
-      if (!loading && !isAuthenticated) {
+      if (!loading && !user) {
         console.log('Protected route - Not authenticated, will redirect to login');
         setRedirecting(true);
 
         // Double-check localStorage before redirecting
         const token = localStorage.getItem('token');
         const savedUser = localStorage.getItem('user');
-        if (token || savedUser) {
-          console.warn('Found token/user in localStorage but context says not authenticated!',
-            { hasToken: !!token, hasUser: !!savedUser });
+        const savedWalletInfo = localStorage.getItem('walletInfo');
+
+        if (token || savedUser || savedWalletInfo) {
+          console.warn('Found token/user/wallet in localStorage but context says not authenticated!',
+            { hasToken: !!token, hasUser: !!savedUser, hasWallet: !!savedWalletInfo });
           // Wait a moment to see if context updates (sometimes there's a race condition)
           await new Promise(r => setTimeout(r, 500));
         }
@@ -44,7 +48,7 @@ const ProtectedRoute = ({ children }) => {
     };
 
     checkAuthStatus();
-  }, [loading, isAuthenticated, user]);
+  }, [loading, user]);
 
   if (loading) {
     return (
@@ -56,7 +60,7 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!user) {
     if (redirecting) {
       return (
         <div className="flex justify-center items-center h-screen">
@@ -78,19 +82,37 @@ ProtectedRoute.propTypes = {
   children: PropTypes.node.isRequired
 };
 
-// Add PropTypes for AuthRoute
-const AuthRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+// Add wallet route to check for wallet connection
+const WalletRoute = ({ children }) => {
+  const { user, walletInfo, loading } = useAuth();
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-pulse text-center">
+          <p className="text-gray-600">Loading wallet state...</p>
+        </div>
+      </div>
+    );
   }
 
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  if (!user || !walletInfo) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-800 mb-4">Connect Your Wallet</h1>
+          <p className="text-gray-600">You need to connect your Aptos wallet to access blockchain features</p>
+        </div>
+        <WalletConnector />
+      </div>
+    );
+  }
+
+  return children;
 };
 
 // Add PropTypes validation
-AuthRoute.propTypes = {
+WalletRoute.propTypes = {
   children: PropTypes.node.isRequired
 };
 
@@ -138,6 +160,16 @@ function AppRoutes() {
             </ProtectedRoute>
           } />
           <Route path="/login/google/callback" element={<AptosLogin />} />
+
+          {/* New blockchain routes */}
+          <Route path="/blockchain/connect" element={<WalletConnector />} />
+          <Route path="/blockchain/create-job" element={
+            <ProtectedRoute>
+              <WalletRoute>
+                <BlockchainJobForm />
+              </WalletRoute>
+            </ProtectedRoute>
+          } />
         </Routes>
       </main>
       <NetworkErrorHandler />

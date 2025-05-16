@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { userApi, aptosApi } from '../services/api';
 import { KeylessAccount } from '@aptos-labs/ts-sdk';
 import { supabase, supabaseAuth } from '../services/supabase';
+import { blockchainService } from '../services/blockchain';
 
 // Fixed UUID for all Aptos wallet users
 const APTOS_USER_UUID = '846ceff6-c234-4d14-b473-f6bcd0dff3af';
@@ -16,6 +17,7 @@ export const AuthProvider = ({ children }) => {
     const [keylessAccount, setKeylessAccount] = useState(null);
     const [isAptosAuthenticated, setIsAptosAuthenticated] = useState(false);
     const [authSource, setAuthSource] = useState(null); // Track auth source for debugging
+    const [walletInfo, setWalletInfo] = useState(null); // Store blockchain wallet info
 
     // Define getLocalKeylessAccount outside of the useEffect
     const getLocalKeylessAccount = () => {
@@ -44,13 +46,42 @@ export const AuthProvider = ({ children }) => {
             const token = localStorage.getItem('token');
             const savedUser = localStorage.getItem('user');
             const aptosAccount = localStorage.getItem('@aptos/keyless_account');
+            const savedWalletInfo = localStorage.getItem('walletInfo');
 
             console.log('Checking auth status...');
             console.log('Saved token:', token ? 'exists' : 'none');
             console.log('Saved user:', savedUser);
             console.log('Aptos account:', aptosAccount ? 'exists' : 'none');
+            console.log('Wallet info:', savedWalletInfo ? 'exists' : 'none');
 
-            // Check for Supabase session first
+            // Check for blockchain wallet first
+            if (savedWalletInfo) {
+                try {
+                    const parsedWalletInfo = JSON.parse(savedWalletInfo);
+                    setWalletInfo(parsedWalletInfo);
+
+                    // Create a user from wallet info
+                    const walletUser = {
+                        id: parsedWalletInfo.address,
+                        walletAddress: parsedWalletInfo.address,
+                        isWallet: true,
+                        authSource: 'blockchain_wallet'
+                    };
+
+                    setUser({
+                        ...walletUser,
+                        ...JSON.parse(savedUser || '{}')
+                    });
+                    setAuthSource('blockchain_wallet');
+                    setLoading(false);
+                    return;
+                } catch (error) {
+                    console.error('Error parsing wallet info:', error);
+                    localStorage.removeItem('walletInfo');
+                }
+            }
+
+            // Check for Supabase session next
             try {
                 const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
                 console.log('Supabase session check:', sessionData?.session ? 'active' : 'none');
@@ -479,6 +510,72 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Add blockchain wallet connection method
+    const connectBlockchainWallet = async () => {
+        try {
+            setError(null);
+            const walletData = await blockchainService.connectWallet();
+
+            if (!walletData.address) {
+                throw new Error('Failed to connect wallet: No wallet address returned');
+            }
+
+            // Save wallet info
+            setWalletInfo(walletData);
+            localStorage.setItem('walletInfo', JSON.stringify(walletData));
+
+            // Create a user from wallet info
+            const walletUser = {
+                id: walletData.address,
+                walletAddress: walletData.address,
+                isWallet: true,
+                authSource: 'blockchain_wallet'
+            };
+
+            // Merge with existing user data if available
+            const existingUserData = localStorage.getItem('user');
+            const mergedUser = existingUserData
+                ? { ...JSON.parse(existingUserData), ...walletUser }
+                : walletUser;
+
+            setUser(mergedUser);
+            setAuthSource('blockchain_wallet');
+            localStorage.setItem('user', JSON.stringify(mergedUser));
+
+            return mergedUser;
+        } catch (error) {
+            setError(error.message || 'Wallet connection failed');
+            throw error;
+        }
+    };
+
+    // Add blockchain wallet disconnection method
+    const disconnectBlockchainWallet = async () => {
+        try {
+            await blockchainService.disconnectWallet();
+
+            localStorage.removeItem('walletInfo');
+            setWalletInfo(null);
+
+            // If this was the only auth source, log the user out
+            if (authSource === 'blockchain_wallet') {
+                localStorage.removeItem('user');
+                setUser(null);
+                setAuthSource(null);
+            } else if (user && user.isWallet) {
+                // If there's another auth source, remove only wallet-related properties
+                const { walletAddress, isWallet, ...restUser } = user;
+                setUser(restUser);
+                localStorage.setItem('user', JSON.stringify(restUser));
+            }
+
+            return true;
+        } catch (error) {
+            setError(error.message || 'Wallet disconnection failed');
+            throw error;
+        }
+    };
+
     return (
         <AuthContext.Provider
             value={{
@@ -499,7 +596,11 @@ export const AuthProvider = ({ children }) => {
                 getLocalKeylessAccount,
                 register,
                 logout,
-                updateProfile
+                updateProfile,
+                formatAptosAddress,
+                walletInfo,
+                connectBlockchainWallet,
+                disconnectBlockchainWallet
             }}
         >
             {children}
