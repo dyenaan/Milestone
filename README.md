@@ -60,12 +60,103 @@ Milestone leverages the Aptos blockchain’s cutting-edge features:
 
 ---
 
+## 📊 Presentation & Demo
+
+📋 **Project Presentation**: [View Slides on Canva](https://www.canva.com/design/DAGnl_5XSFE/wnr_lorqBmP2vxADFAIsUw/edit?utm_content=DAGnl_5XSFE&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton)
+
+The presentation covers:
+- 🎯 Project vision and problem statement
+- 🏗️ Technical architecture and design
+- 💡 Key features and innovations
+- 🚀 Demo walkthrough
+- 🌟 Future roadmap
+
+---
+
 ## 📦 Repo Structure
 
 ```bash
 milestone/
 ├── frontend/        # React frontend (job UI, wallet connect)
-├── smart-contracts/ # Move smart contracts (escrow, disputes)
+├── contracts/       # Move smart contracts (escrow, disputes)
 ├── backend/         # Supabase config + webhook handlers
 └── docs/            # Architecture diagrams, specs
+```
 
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js (v14 or higher)
+- npm or yarn
+- Aptos CLI (for smart contract deployment)
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/dyenaan/Milestone.git
+cd Milestone
+```
+
+### 2. Setup Frontend
+```bash
+cd frontend
+npm install
+npm start
+```
+The frontend will be available at `http://localhost:3000`
+
+### 3. Setup Backend
+```bash
+cd backend
+npm install
+# Configure .env file with Supabase credentials
+npm run dev
+```
+The backend API will be available at `http://localhost:3001`
+
+### 4. Smart Contracts
+```bash
+cd contracts
+npm install
+npx hardhat compile
+# Deploy to testnet using Hardhat
+```
+
+For detailed setup instructions, check the README files in each component directory:
+- [Frontend Setup](./frontend/README.md)
+- [Backend Setup](./backend/README.md)
+- [Smart Contracts Setup](./contracts/README.md)
+
+---
+
+## 🖼️ Screenshots & Demo
+
+### Login Page
+![Milestone Login Page](https://github.com/user-attachments/assets/a8467e23-ccb5-4286-a571-cd9d120f37b8)
+
+The Milestone platform features a clean, modern interface with:
+- 🔐 Secure email and Google authentication
+- 🌐 Aptos wallet integration
+- 🎨 Professional UI with Tailwind CSS
+- 📱 Responsive design for all devices
+
+*Additional screenshots and demo videos will be added as features are completed.*
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please check our individual component READMEs for development setup:
+
+1. **Frontend Development**: See [frontend/README.md](./frontend/README.md)
+2. **Backend Development**: See [backend/README.md](./backend/README.md)
+3. **Smart Contract Development**: Check the contracts directory
+
+---
+
+## 📧 Contact & Support
+
+- 🐛 **Issues**: [GitHub Issues](https://github.com/dyenaan/Milestone/issues)
+- 💬 **Discussion**: [GitHub Discussions](https://github.com/dyenaan/Milestone/discussions)
+- 📋 **Project Board**: Track development progress
